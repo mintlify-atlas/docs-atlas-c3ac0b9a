@@ -1,5 +1,5 @@
 ---
-title: "Importing Functions Between Cantor Files"
+title: "Cantor Import Directive: Loading Functions Between Files"
 sidebarTitle: "Imports"
 description: "Use the import directive to load function definitions from other .cantor files, enabling modular composition and reuse across programs."
 ---
@@ -43,10 +43,10 @@ When a file is imported, only its **function definitions** are loaded. Specifica
 The path for `import foo` is resolved as:
 
 ```
-<directory of the currently executing .cantor file> / foo.cantor
+<directory of the main .cantor program file> / foo.cantor
 ```
 
-This means imports are always relative to the file that contains the `import` directive, not to the working directory of the shell or the location of the root program.
+This means all imports — direct and transitive — are always resolved relative to the directory of the top-level program file passed to the interpreter, not to the working directory of the shell and not to the location of whichever imported file triggered the import.
 
 <Warning>
 Some test folders contain their own copy of `relacionals.cantor` precisely because of this rule. If a program in `phase4-minimization/` imports `relacionals`, it loads `phase4-minimization/relacionals.cantor`, not any copy that might exist in a parent directory. Ensure that all imported files live alongside the main `.cantor` file that will be executed.

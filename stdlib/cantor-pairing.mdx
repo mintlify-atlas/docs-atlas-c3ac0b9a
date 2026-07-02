@@ -1,7 +1,7 @@
 ---
-title: "Cantor Pairing Function: Encoding Natural Numbers"
+title: "Cantor Pairing Function: Encoding Natural Number Pairs"
 sidebarTitle: "Cantor Pairing"
-description: "How Cantor's pairing function encodes two or more natural numbers into one, enabling multi-argument functions in the Cantor Interpreter's single-argument model."
+description: "How Cantor's pairing function encodes two naturals into one, enabling multi-argument functions in the Cantor Interpreter's single-argument model."
 ---
 
 Every function in the Cantor language takes exactly one natural number as its argument. Real programs, however, often need to pass two or more values at once — think addition, which needs both an `x` and a `y`. The solution is Georg Cantor's *pairing function*: a mathematical bijection that encodes any two natural numbers into a single natural number, losslessly. The Cantor Interpreter relies on this encoding everywhere: from the CLI's input pipeline all the way down to how built-ins like `add` and `mul` unpack their arguments at runtime.

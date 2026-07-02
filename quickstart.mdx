@@ -1,5 +1,5 @@
 ---
-title: "Get Started with Cantor Interpreter in 5 Minutes"
+title: "Get Started with Cantor Interpreter in Five Minutes"
 sidebarTitle: "Quickstart"
 description: "Run your first Cantor program, understand input encoding via Cantor pairing, and write a simple function definition in under 5 minutes."
 ---
@@ -88,14 +88,14 @@ import <module-name>      # optional: load definitions from another .cantor file
 extended                  # optional: enable compair and primrec combinators
 
 define <name>
-    [optional doc comment]
+    [doc comment]
     <function-body>
 ```
 
 - **`main <function>`** — declares the entry-point function. Must appear exactly once.
 - **`import <module-name>`** — imports definitions from a file named `<module-name>.cantor` in the same directory as the current program.
 - **`extended`** — unlocks the `compair` and `primrec` combinators.
-- **`define <name> [doc] <body>`** — gives a name to a function expression. The documentation string in `[…]` is optional and ignored by the interpreter.
+- **`define <name> [doc] <body>`** — gives a name to a function expression. The documentation string in `[…]` is required by the grammar and ignored at runtime — it exists to annotate what the function does.
 
 ## CLI usage
 
@@ -129,18 +129,22 @@ Usage: python3 cantor.py <file.cantor>
   </Step>
 
   <Step title="Write the program">
-    Add the following content. This defines a `double` function that computes `x + x` by pairing `x` with itself and passing the result to `add`:
+    Add the following content. This defines a `double` function that computes `x + x` by pairing `x` with itself and passing the result to `add`. Because each combinator body only accepts plain function names, the intermediate `pair id id` step must be given its own name first:
 
     ```text
     main double
 
+    define pair_x_x
+        [<x.x>]
+        pair id id
+
     define double
         [Returns x + x]
-        comp add (pair id id)
+        comp add pair_x_x
     ```
 
-    - `pair id id` turns input `x` into the Cantor pair `<x, x>`.
-    - `comp add (pair id id)` pipes that pair through `add`, yielding `x + x`.
+    - `pair_x_x` uses `pair id id` to turn input `x` into the Cantor pair `<x, x>`.
+    - `double` applies `comp add pair_x_x`, meaning it first runs `pair_x_x` on the input to get `<x, x>`, then feeds that to `add`, yielding `x + x`.
   </Step>
 
   <Step title="Run it">

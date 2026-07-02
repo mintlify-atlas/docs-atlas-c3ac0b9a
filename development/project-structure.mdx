@@ -52,7 +52,7 @@ The ANTLR4 grammar that defines the full Cantor language syntax. It specifies pa
 
 The main interpreter module. It exposes two public callables:
 
-- **`run(filename, input_text)`** — resolves `filename` to an absolute path, calls `parse_cantor_file` to build a parse tree, creates a `CantorInterpreter`, visits the tree, encodes the raw input text with `encode_input_text`, and returns the integer result of calling `interpreter.evaluate(encoded_input)`.
+- **`run(filename: str, input_text: str) -> int`** — resolves `filename` to an absolute path, calls `parse_cantor_file` to build a parse tree, creates a `CantorInterpreter`, visits the tree, encodes the raw input text with `encode_input_text`, and returns the integer result of calling `interpreter.evaluate(encoded_input)`.
 - **`main()`** — the CLI handler. Reads `sys.argv[1]` for the `.cantor` file path, reads all of stdin as the input text, calls `run`, prints the result, and returns an exit code.
 
 ### `src/cantor_interpreter.py`

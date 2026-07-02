@@ -15,7 +15,7 @@ Primitive recursion in Cantor is expressed with the `primrec f g h` combinator, 
 `primrec is_base g_base step` processes input `x` by iterating `i` from `0` to `x`:
 
 - At each step `i`, if `is_base(i) ≠ 0` the result for that step is `g_base(i)`.
-- Otherwise, the result is `step(<i, history>)`, where `history` is the Cantor-encoded chain `pi(result_{i-1}, pi(result_{i-2}, ...))` built from all prior results.
+- Otherwise, the result is `step(<i, history>)`, where `history` is the Cantor-encoded right-nested chain of all prior results built by repeatedly pairing each new result with the previous chain.
 - After the final iteration, `primrec` returns the result computed at step `x`.
 
 The history encoding means that inside `step`, the first previous result is accessed as `fst(snd(z))`, the second as `fst(snd(snd(z)))`, and so on, where `z` is the full `<i, history>` argument.
