@@ -1,0 +1,85 @@
+{
+  "projectType": "general",
+  "projectName": "Cantor Interpreter",
+  "projectDescription": "A minimalist interpreter for the Cantor programming language, built with ANTLR4 and Python, that computes functions over natural numbers using Cantor pairing.",
+  "theme": "luma",
+  "primaryColor": "#343434",
+  "lightColor": null,
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": ["introduction", "installation", "quickstart"]
+          },
+          {
+            "group": "Language Reference",
+            "pages": [
+              "language/overview",
+              "language/syntax",
+              "language/operations",
+              "language/imports",
+              "language/extended-mode"
+            ]
+          },
+          {
+            "group": "Standard Library",
+            "pages": [
+              "stdlib/builtin-functions",
+              "stdlib/cantor-pairing"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "examples/arithmetic",
+              "examples/boolean-logic",
+              "examples/recursion"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/testing",
+              "development/project-structure"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "ANTLR4-generated lexer, parser, and visitor from a single grammar file",
+    "Cantor pairing function for encoding multiple inputs as a single natural number",
+    "Core combinators: comp, pair, compair, mu (minimization), primrec (primitive recursion)",
+    "Extended mode enabling compair and primrec operations",
+    "Module import system for composing functions across .cantor files",
+    "Built-in standard library with arithmetic and projection functions",
+    "End-to-end test suite with .cantor/.inp/.out program files",
+    "Single-command CLI: python3 cantor.py <file.cantor>"
+  ],
+  "publicApiSurface": [
+    "python3 cantor.py <file.cantor>",
+    "run(filename: str, input_text: str) -> int",
+    "CantorInterpreter(base_dir: Path)",
+    "CantorInterpreter.evaluate(encoded_number: int) -> int",
+    "pi(x: int, y: int) -> int",
+    "unpi(z: int) -> tuple[int, int]",
+    "pi_from_list(numbers: list[int]) -> int",
+    "unpi_list(z: int, num_elements: int) -> list[int]",
+    "encode_input_text(input_text: str) -> int",
+    "parse_input_text(input_text: str) -> list[int]",
+    "parse_cantor_file(file_path: Path) -> cantorParser.ProgramContext",
+    "BUILTIN_FUNCTIONS: dict (k_1, id, add, mul, diff, fst, snd)",
+    "make (generate ANTLR files)",
+    "make deps (install Python dependencies)",
+    "make test (run all tests)",
+    "make test-python (run stdlib unit tests)",
+    "make test-programs (run .cantor program tests)",
+    "make clean (remove generated files)",
+    "make re (rebuild from scratch)"
+  ]
+}

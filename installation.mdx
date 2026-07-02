@@ -1,0 +1,129 @@
+---
+title: "Install Cantor Interpreter and Build the ANTLR4 Parser"
+sidebarTitle: "Installation"
+description: "Step-by-step guide to installing Cantor Interpreter's Python dependencies, Java runtime, and generating the ANTLR4 lexer and parser from the grammar."
+---
+
+Setting up Cantor Interpreter involves three things: cloning the repository, installing the Python packages that provide the ANTLR4 runtime, and running `make` to generate the parser files from the grammar. The steps below walk through each one.
+
+## Requirements
+
+| Requirement | Minimum version | Purpose |
+|---|---|---|
+| Python | 3.12 | Running the interpreter |
+| Java | 11 or newer | Running the ANTLR4 tool during code generation |
+| `antlr4-python3-runtime` | 4.13.1 | ANTLR4 runtime used at parse time |
+| `antlr4-tools` | latest | Provides the `antlr4` CLI that generates parser source files |
+
+<Note>
+Java is **only** required during the `make` step that generates the parser files. Once `cantorLexer.py`, `cantorParser.py`, and `cantorVisitor.py` have been created, you do not need Java to run Cantor programs.
+</Note>
+
+## Installation steps
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/felipenugo/cantor-interpreter.git
+    cd cantor-interpreter
+    ```
+  </Step>
+
+  <Step title="Install Python dependencies">
+    Install the two required packages — the ANTLR4 Python runtime and the ANTLR4 tools — using either of the following commands:
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+    Or, using the provided Makefile target:
+
+    ```bash
+    make deps
+    ```
+
+    Both commands install exactly the packages listed in `requirements.txt`:
+
+    ```text
+    antlr4-python3-runtime==4.13.1
+    antlr4-tools
+    ```
+  </Step>
+
+  <Step title="Generate the ANTLR4 parser">
+    Run `make` (with no arguments) to invoke ANTLR4 on the grammar file and generate the Python source files:
+
+    ```bash
+    make
+    ```
+
+    The Makefile runs ANTLR4 **inside** the `src/` directory so that all generated files are placed there:
+
+    ```bash
+    cd src && antlr4 -Dlanguage=Python3 -visitor -no-listener cantor.g4
+    ```
+
+    After this step, the following files appear in `src/`:
+
+    | Generated file | Description |
+    |---|---|
+    | `cantorLexer.py` | Tokenises `.cantor` source files |
+    | `cantorParser.py` | Builds the parse tree from the token stream |
+    | `cantorVisitor.py` | Base visitor class used by `CantorInterpreter` |
+    | `cantor.interp`, `cantor.tokens`, `cantorLexer.interp`, `cantorLexer.tokens` | ANTLR4 metadata files (not used directly) |
+
+    <Note>
+      The generated files are produced entirely from `src/cantor.g4`. Do **not** edit them by hand — any changes will be overwritten the next time you run `make`.
+    </Note>
+  </Step>
+</Steps>
+
+## Utility Makefile targets
+
+Beyond the default build, the Makefile provides several helpful targets.
+
+### `make clean`
+
+Removes all ANTLR4-generated Python source files, metadata files, and Python cache directories (`__pycache__`, `.ruff_cache`, `.antlr`):
+
+```bash
+make clean
+```
+
+### `make re`
+
+Equivalent to `make clean && make` — rebuilds everything from scratch. Use this if you modify the grammar file `src/cantor.g4` and need a guaranteed clean rebuild:
+
+```bash
+make re
+```
+
+### `make deps`
+
+Installs Python dependencies via pip. Useful as a quick shorthand instead of typing the full `pip install` command:
+
+```bash
+make deps
+```
+
+## Verifying the installation
+
+Once `make` completes, confirm the generated files exist:
+
+```bash
+ls src/cantorLexer.py src/cantorParser.py src/cantorVisitor.py
+```
+
+Then run a quick smoke test by piping two numbers into the built-in addition example:
+
+```bash
+echo "3 2" | python3 cantor.py tests/programs/phase1-core/suma.cantor
+```
+
+Expected output:
+
+```text
+5
+```
+
+If you see `5`, the interpreter is correctly installed and the parser was generated successfully.

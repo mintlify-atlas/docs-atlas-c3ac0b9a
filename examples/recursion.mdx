@@ -1,0 +1,177 @@
+---
+title: "Recursive Programs: Factorial and Fibonacci in Cantor"
+sidebarTitle: "Recursion"
+description: "Implement factorial and Fibonacci sequences using primitive recursion (primrec) and Cantor's history-encoding technique for multi-value recursive steps."
+---
+
+Primitive recursion in Cantor is expressed with the `primrec f g h` combinator, which iterates over natural numbers from `0` to `x` while threading a running accumulator of previous results. Unlike classical primitive recursion schemes that only expose the immediately preceding result, Cantor's `primrec` stores the **full history** as a right-nested chain of Cantor-encoded pairs, making it possible to reach any prior result by traversing `snd` projections. This enables functions like Fibonacci — which needs the two most recent values — to be written without any extra bookkeeping.
+
+<Note>
+  `primrec` is part of Cantor's **extended** feature set. Programs that use it must include the `extended` keyword at the top of the file. Without it, the interpreter will reject the `primrec` keyword.
+</Note>
+
+## How primrec works
+
+`primrec is_base g_base step` processes input `x` by iterating `i` from `0` to `x`:
+
+- At each step `i`, if `is_base(i) ≠ 0` the result for that step is `g_base(i)`.
+- Otherwise, the result is `step(<i, history>)`, where `history` is the Cantor-encoded chain `pi(result_{i-1}, pi(result_{i-2}, ...))` built from all prior results.
+- After the final iteration, `primrec` returns the result computed at step `x`.
+
+The history encoding means that inside `step`, the first previous result is accessed as `fst(snd(z))`, the second as `fst(snd(snd(z)))`, and so on, where `z` is the full `<i, history>` argument.
+
+<Tip>
+  For a deeper explanation of the Cantor pairing function and the extended combinator set, see the Language & Extended Mode page.
+</Tip>
+
+## Factorial
+
+Factorial is the canonical single-step recursion: `0! = 1` and `n! = n * (n-1)!`. Only the immediately preceding result is needed at each step.
+
+```text
+# factorial.cantor
+main factorial
+extended
+import relacionals
+
+define k_0
+    [0]
+    compair diff k_1 k_1
+
+define segon
+    [2on]
+    comp fst snd
+
+define is_base
+    [zero?]
+    compair eq id k_0
+
+define step
+    [Recursiu fact]
+    compair mul fst segon
+
+define factorial
+    [x!]
+    primrec is_base k_1 step
+```
+
+<Steps>
+  <Step title="k_0 — the constant zero">
+    `compair diff k_1 k_1` computes `diff(1, 1) = 0`. Cantor has no literal `0` constant, so it is synthesised from `diff`.
+  </Step>
+  <Step title="segon — first previous result">
+    Inside a `step` call, the argument is `<i, history>`. `comp fst snd` computes `fst(snd(z))`, which is the result from step `i - 1` — the immediately preceding factorial value.
+  </Step>
+  <Step title="is_base — base case guard">
+    `compair eq id k_0` checks whether the current index `i` equals `0`. It returns `1` (true) for `i = 0` and `0` otherwise.
+  </Step>
+  <Step title="step — recursive multiplication">
+    `compair mul fst segon` multiplies `fst(z) = i` by `segon(z) = (i-1)!`, yielding `i * (i-1)! = i!`.
+  </Step>
+  <Step title="factorial — wire it together">
+    `primrec is_base k_1 step` seeds the base case with `g_base = k_1` (so `0! = 1`) and uses `step` for all subsequent indices.
+  </Step>
+</Steps>
+
+```bash
+echo "3" | python3 cantor.py tests/programs/phase5-primrec/factorial.cantor
+```
+
+```
+6
+```
+
+To verify the classic value:
+
+```bash
+echo "5" | python3 cantor.py tests/programs/phase5-primrec/factorial.cantor
+```
+
+```
+120
+```
+
+## Fibonacci
+
+Fibonacci requires the two most recent values: `fib(n) = fib(n-1) + fib(n-2)`. This is where Cantor's history chain becomes essential — `prev1` reaches back one step and `prev2` reaches back two steps by traversing `snd` twice.
+
+```text
+# fibonacci.cantor
+main fibonacci
+extended
+import relacionals
+
+define k_2
+    [2]
+    compair add k_1 k_1
+
+define is_base
+    [x < 2]
+    compair lt id k_2
+
+define prev1
+    [s(i-1)]
+    comp fst snd
+
+define prev_tail
+    [Tupla sense s(i-1)]
+    comp snd snd
+
+define prev2
+    [s(i-2)]
+    comp fst prev_tail
+
+define step
+    [Suma dels dos resultats anteriors]
+    compair add prev1 prev2
+
+define fibonacci
+    [Fibonacci]
+    primrec is_base id step
+```
+
+<Steps>
+  <Step title="k_2 — the constant two">
+    `compair add k_1 k_1` computes `1 + 1 = 2`, synthesising the constant `2` from `k_1`.
+  </Step>
+  <Step title="is_base — base case for i < 2">
+    `compair lt id k_2` returns `1` when the current index `i < 2`, covering both `fib(0) = 0` and `fib(1) = 1`.
+  </Step>
+  <Step title="prev1 — most recent Fibonacci value">
+    `comp fst snd` extracts the first element of the history chain: the result from step `i - 1`.
+  </Step>
+  <Step title="prev_tail — tail of the history chain">
+    `comp snd snd` drops the first element of history, exposing the rest of the chain starting at step `i - 2`.
+  </Step>
+  <Step title="prev2 — second-most-recent Fibonacci value">
+    `comp fst prev_tail` takes the first element of the tail, retrieving the result from step `i - 2`.
+  </Step>
+  <Step title="step — add the two predecessors">
+    `compair add prev1 prev2` sums `fib(i-1)` and `fib(i-2)` to produce `fib(i)`.
+  </Step>
+  <Step title="fibonacci — wire it together">
+    `primrec is_base id step` uses `id` as the base-case function, so for `i < 2` the result is `id(i) = i` itself — correctly yielding `fib(0) = 0` and `fib(1) = 1`.
+  </Step>
+</Steps>
+
+```bash
+echo "6" | python3 cantor.py tests/programs/phase5-primrec/fibonacci.cantor
+```
+
+```
+8
+```
+
+To reach the well-known value `fib(10) = 55`:
+
+```bash
+echo "10" | python3 cantor.py tests/programs/phase5-primrec/fibonacci.cantor
+```
+
+```
+55
+```
+
+<Warning>
+  For large inputs the interpreter evaluates every intermediate step linearly. `primrec` has no memoisation cache, so computing `fib(n)` or `n!` for large `n` may be slow in the reference Python implementation.
+</Warning>

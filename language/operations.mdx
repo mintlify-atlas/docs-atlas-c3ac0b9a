@@ -1,0 +1,297 @@
+---
+title: "Cantor Combinators: comp, pair, compair, mu, primrec"
+sidebarTitle: "Operations"
+description: "Detailed reference for all five Cantor combinators — comp, pair, compair, mu, and primrec — with signatures, semantics, and worked examples."
+---
+
+Every Cantor function body is exactly one combinator application. There are five combinators in total: `comp` and `pair` are available in every program; `compair` and `primrec` require extended mode; `mu` is available in all modes but introduces the possibility of non-termination. This page covers each combinator in detail with real examples drawn from the test suite.
+
+---
+
+## comp — function composition
+
+**Syntax**
+
+```text
+comp f g
+```
+
+**Semantics**
+
+Given input `x`, `comp f g` evaluates `g` first, then passes the result to `f`:
+
+```
+(comp f g)(x)  =  f(g(x))
+```
+
+`comp` is the primary tool for chaining functions together. It directly mirrors mathematical function composition.
+
+**When to use it**
+
+Use `comp` whenever you need to apply one function to the result of another. Because every Cantor combinator operates on a single number, `comp` is needed any time you want to post-process the output of a helper.
+
+**Example — computing the predecessor**
+
+From `tests/programs/phase1-core/anterior.cantor`:
+
+```text
+# Step 1: build the pair <x, 1> from input x
+define aparella_amb_1
+    [Aparella l'entrada x amb 1: <x.1> ]
+    pair id k_1
+
+# Step 2: apply diff to <x, 1>, giving max(0, x − 1)
+define anterior
+    [Anterior amb limit 0]
+    comp diff aparella_amb_1
+```
+
+`anterior(5)`:
+1. `aparella_amb_1(5)` → `pair id k_1` → `<5.1>` (Cantor-encoded)
+2. `diff(<5.1>)` → `max(0, 5 − 1)` → `4`
+
+`anterior(0)`:
+1. `aparella_amb_1(0)` → `<0.1>`
+2. `diff(<0.1>)` → `max(0, 0 − 1)` → `0`
+
+---
+
+## pair — Cantor-encode two results
+
+**Syntax**
+
+```text
+pair f g
+```
+
+**Semantics**
+
+Given input `x`, `pair f g` applies both `f` and `g` to the same `x` and encodes their results as a single natural number using the Cantor pairing function:
+
+```
+(pair f g)(x)  =  π(f(x), g(x))  =  <f(x).g(x)>
+```
+
+where `π(a, b) = ((a + b) × (a + b + 1)) / 2 + b`.
+
+**When to use it**
+
+`pair` is the fundamental way to pass two values to a function that expects a single encoded pair. For example, built-ins `add`, `mul`, and `diff` all decode their input with `fst`/`snd`, so you must first construct a pair before calling them on two computed values.
+
+**Example — pairing identity with a constant**
+
+```text
+define aparella_amb_1
+    [Aparella l'entrada x amb 1: <x.1> ]
+    pair id k_1
+```
+
+`aparella_amb_1(7)`:
+- `id(7)` → `7`
+- `k_1(7)` → `1`
+- `pair id k_1` → `π(7, 1)` → `<7.1>` → `36`
+
+This encoded pair can then be fed to `diff`, `add`, `mul`, or any other function that expects `<x.y>`.
+
+<Tip>
+`pair f g` is commutative in structure but not in value: `pair f g` gives `<f(x).g(x)>` while `pair g f` gives `<g(x).f(x)>`. The order matters whenever the consuming function uses `fst` and `snd` asymmetrically, as `diff` does.
+</Tip>
+
+---
+
+## compair — compose after pairing (extended only)
+
+**Syntax**
+
+```text
+compair f g h
+```
+
+**Semantics**
+
+`compair f g h` is syntactic sugar for `comp f (pair g h)`. Given input `x`:
+
+```
+(compair f g h)(x)  =  f(<g(x).h(x)>)  =  f(π(g(x), h(x)))
+```
+
+It computes `g(x)` and `h(x)`, pairs them, and passes the result to `f`.
+
+**When to use it**
+
+`compair` replaces the common two-step pattern of first defining a `pair` helper and then composing with `comp`. It keeps definitions concise whenever you need to pass two derived values to a binary function.
+
+<Warning>
+`compair` requires extended mode. If the program does not include the `extended` directive, evaluating a `compair` body raises `ValueError: 'compair' requires extended mode.`
+</Warning>
+
+**Example — quotient search in div.cantor**
+
+From `tests/programs/phase4-minimization/div.cantor`:
+
+```text
+main div
+extended
+import relacionals
+
+define vx
+    [x a <<x.y>.q>]
+    comp fst fst
+
+define vy
+    [y a <<x.y>.q>]
+    comp snd fst
+
+define q1
+    [q+1 a <<x.y>.q>]
+    compair add snd k_1
+
+define yq1
+    [y*(q+1) a <<x.y>.q>]
+    compair mul vy q1
+
+define test_quotient
+    [Prova del quocient per mu(q), y*(q+1) > x a <<x.y>.q>]
+    compair gt yq1 vx
+
+define div
+    [Quocient de la divisió per cerca lineal]
+    mu test_quotient
+```
+
+`q1` illustrates `compair` directly: given the encoded input `z = <<x.y>.q>`, it computes `snd(z) = q` and `k_1(z) = 1`, then passes `<q.1>` to `add`, yielding `q + 1`.
+
+Without `compair` the equivalent definition would need an intermediate `pair` function:
+
+```text
+define pair_snd_k1
+    []
+    pair snd k_1
+
+define q1
+    [q+1]
+    comp add pair_snd_k1
+```
+
+---
+
+## mu — minimization (unbounded search)
+
+**Syntax**
+
+```text
+mu f
+```
+
+**Semantics**
+
+Given input `x`, `mu f` searches for the smallest natural number `k ≥ 0` such that `f(<x.k>) ≠ 0`, and returns that `k`:
+
+```
+(mu f)(x)  =  min { k ∈ ℕ  |  f(π(x, k)) ≠ 0 }
+```
+
+The interpreter tries `k = 0, 1, 2, …` in order, calling `f(π(x, k))` each time, and stops as soon as the result is non-zero.
+
+**When to use it**
+
+`mu` expresses any search whose stopping condition can be computed as a Cantor function. Classical uses include integer division, modulo, and any inverse function. Combined with the rest of the language, `mu` makes Cantor Turing-complete.
+
+<Warning>
+`mu` has no timeout and no bound. If `f(<x.k>)` is zero for every `k`, the interpreter loops forever. Always ensure the predicate passed to `mu` becomes non-zero for some finite `k` on every valid input before using it in production.
+</Warning>
+
+**Example — integer division by linear search**
+
+From `tests/programs/phase4-minimization/div.cantor` (shown in full above), the key definition is:
+
+```text
+define div
+    [Quocient de la divisió per cerca lineal]
+    mu test_quotient
+```
+
+Input to `div` is the Cantor encoding of `<x.y>` (dividend and divisor). The predicate `test_quotient` returns non-zero when `y × (q + 1) > x`, i.e., when `q` has exceeded the true quotient. The smallest such `k` is the integer quotient `⌊x / y⌋`.
+
+<Tip>
+`mu` does not require extended mode. It works in both base and extended programs.
+</Tip>
+
+---
+
+## primrec — primitive recursion (extended only)
+
+**Syntax**
+
+```text
+primrec f g h
+```
+
+**Semantics**
+
+`primrec f g h` iterates from `0` to `x` (inclusive), accumulating a result. At each step `i`:
+
+- If `f(i) ≠ 0` (**base case**): `current_result = g(i)`
+- Otherwise (**recursive step**): `current_result = h(<i.previous_results>)`
+
+where `previous_results` is the Cantor-encoded history of all prior `current_result` values, accumulated as `<last.<second_last.<…>>>`.
+
+After the loop completes (at `i = x`), the function returns `current_result`.
+
+```
+(primrec f g h)(x)  =  result after iterating i from 0 to x:
+    result_i = g(i)                         if f(i) ≠ 0
+    result_i = h(<i . <result_{i-1} . ...>) otherwise
+```
+
+<Warning>
+`primrec` requires extended mode. Using it without the `extended` directive raises `ValueError: 'primrec' requires extended mode.`
+</Warning>
+
+**When to use it**
+
+`primrec` is the structured alternative to `mu` for functions whose recursion depth is exactly `x`. It is suited to definitions like factorial, Fibonacci, and summation, where the recurrence is known in advance. Unlike `mu`, it always terminates (the loop runs exactly `x + 1` times).
+
+**Example — factorial**
+
+From `tests/programs/phase5-primrec/factorial.cantor`:
+
+```text
+main factorial
+extended
+import relacionals
+
+define k_0
+    [0]
+    compair diff k_1 k_1
+
+define segon
+    [2on]
+    comp fst snd
+
+define is_base
+    [zero?]
+    compair eq id k_0
+
+define step
+    [Recursiu fact]
+    compair mul fst segon
+
+define factorial
+    [x!]
+    primrec is_base k_1 step
+```
+
+The predicate `is_base` checks whether the current index `i` equals `0`. When it does, `g = k_1` returns `1` (0! = 1). On subsequent steps, `h = step` computes `i × previous_result` via `compair mul fst segon`: `fst` extracts `i` from `<i.previous_results>` and `segon` (`comp fst snd`) extracts the immediately preceding result.
+
+`factorial(4)` trace:
+
+| i | f(i) ≠ 0? | current\_result | previous\_results |
+|---|---|---|---|
+| 0 | yes (base) | `k_1(0) = 1` | `<1.0>` |
+| 1 | no | `step(<1.<1.0>>) = 1×1 = 1` | `<1.<1.0>>` |
+| 2 | no | `step(<2.<1.<1.0>>>) = 2×1 = 2` | `<2.<1.<1.0>>>` |
+| 3 | no | `step(<3.<2.<…>>>) = 3×2 = 6` | `<6.<2.<…>>>` |
+| 4 | no | `step(<4.<6.<…>>>) = 4×6 = 24` | — |
+
+Result: `24`. ✓

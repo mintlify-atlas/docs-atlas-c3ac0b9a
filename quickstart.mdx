@@ -1,47 +1,161 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Cantor Interpreter in 5 Minutes"
+sidebarTitle: "Quickstart"
+description: "Run your first Cantor program, understand input encoding via Cantor pairing, and write a simple function definition in under 5 minutes."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
+This guide assumes you have already cloned the repository, installed the Python dependencies, and generated the ANTLR4 parser files. If you haven't done that yet, complete the [Installation](/installation) steps first, then come back here.
 
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+<Note>
+  All commands below are run from the root of the `cantor-interpreter` repository.
+</Note>
 
-## Prerequisites
+## Run your first program
 
-Before you begin, you must have:
+The simplest possible Cantor program is `suma.cantor`. Its entire source is:
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
+```text
+# suma.cantor
+main add
+```
 
-## Get started
+The `main` keyword declares which function the program exposes. Here it is the built-in `add`, which receives a Cantor-encoded pair `<x, y>` and returns `x + y`.
+
+Run it by piping two numbers into the interpreter:
+
+```bash
+echo "3 2" | python3 cantor.py tests/programs/phase1-core/suma.cantor
+```
+
+Expected output:
+
+```text
+5
+```
+
+### What just happened?
+
+1. You provided two numbers, `3` and `2`, on standard input.
+2. The interpreter read them and encoded the pair using the Cantor pairing function: `<3, 2>` becomes a single natural number.
+3. The `main` function (`add`) received that encoded number, decoded the pair, and returned `3 + 2 = 5`.
+4. The result was printed to standard output.
+
+This encoding step is automatic — you always write plain space-separated numbers on stdin, and the interpreter handles the pairing.
+
+## A program with definitions
+
+`anterior.cantor` defines a **predecessor** function (called `anterior` — Catalan for "previous"). Because the language has no subtraction that can go negative, it implements `max(0, x − 1)` using the built-in `diff` combinator:
+
+```text
+# anterior.cantor
+main anterior
+
+define aparella_amb_1
+    [Aparella l'entrada x amb 1: <x.1> ]
+    pair id k_1
+
+define anterior
+    [Anterior amb limit 0]
+    comp diff aparella_amb_1
+```
+
+Reading this from the bottom up:
+
+- `aparella_amb_1` uses `pair id k_1` to turn input `x` into the Cantor pair `<x, 1>`.
+- `anterior` applies `comp diff aparella_amb_1`, meaning it first runs `aparella_amb_1` on the input to get `<x, 1>`, then feeds that to `diff`, which computes `max(0, x − 1)`.
+
+Run it:
+
+```bash
+echo "5" | python3 cantor.py tests/programs/phase1-core/anterior.cantor
+```
+
+Expected output:
+
+```text
+4
+```
+
+## Program structure reference
+
+Every `.cantor` file follows this layout (only `main` is required):
+
+```text
+main <function>
+
+import <module-name>      # optional: load definitions from another .cantor file
+
+extended                  # optional: enable compair and primrec combinators
+
+define <name>
+    [optional doc comment]
+    <function-body>
+```
+
+- **`main <function>`** — declares the entry-point function. Must appear exactly once.
+- **`import <module-name>`** — imports definitions from a file named `<module-name>.cantor` in the same directory as the current program.
+- **`extended`** — unlocks the `compair` and `primrec` combinators.
+- **`define <name> [doc] <body>`** — gives a name to a function expression. The documentation string in `[…]` is optional and ignored by the interpreter.
+
+## CLI usage
+
+The interpreter always reads from **standard input** and writes the result to **standard output**:
+
+```bash
+python3 cantor.py <file.cantor>
+```
+
+To supply input from a file instead of typing it inline, redirect it:
+
+```bash
+python3 cantor.py <file.cantor> < input.inp
+```
+
+If you call the interpreter with the wrong number of arguments it prints usage help to stderr:
+
+```text
+Usage: python3 cantor.py <file.cantor>
+```
+
+## Write and run your own program
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Create a new file">
+    Open a new file called `double.cantor` in the project root:
 
     ```bash
-    npm install your-package
+    touch double.cantor
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
 
-    ```bash
-    your-cli init
+  <Step title="Write the program">
+    Add the following content. This defines a `double` function that computes `x + x` by pairing `x` with itself and passing the result to `add`:
+
+    ```text
+    main double
+
+    define double
+        [Returns x + x]
+        comp add (pair id id)
     ```
+
+    - `pair id id` turns input `x` into the Cantor pair `<x, x>`.
+    - `comp add (pair id id)` pipes that pair through `add`, yielding `x + x`.
   </Step>
+
   <Step title="Run it">
-    Show the first thing a user does to see it working.
-
     ```bash
-    your-cli start
+    echo "7" | python3 cantor.py double.cantor
+    ```
+
+    Expected output:
+
+    ```text
+    14
     ```
   </Step>
 </Steps>
 
 <Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
-
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+  The `tests/programs/` directory contains ready-to-run examples covering booleans, division, modulo, even-number testing, factorial, Fibonacci, max/min, and conditional logic — organised into phases (`phase1-core` through `phase5-primrec`). Each program comes with a matching `.inp` input file and a `.out` expected-output file, making them a great resource for understanding what the language can express.
 </Tip>

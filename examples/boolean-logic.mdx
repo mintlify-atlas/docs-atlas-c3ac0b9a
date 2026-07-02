@@ -1,0 +1,343 @@
+---
+title: "Boolean Logic and Relational Programs in Cantor"
+sidebarTitle: "Boolean Logic"
+description: "Examples of boolean AND, OR, NOT, equality, and comparison functions built from Cantor combinators and the relational standard library."
+---
+
+Cantor has no dedicated boolean type — booleans are simply natural numbers, where **0 means false** and **any non-zero value means true**. This convention lets boolean logic be expressed with the same arithmetic combinators used everywhere else in the language. The programs below show how AND, OR, and NOT emerge from multiplication, sign detection, and monus, and how those primitives are combined further into equality and ordered comparisons.
+
+<Tip>
+  The `relacionals.cantor` module defines `eq`, `neq`, `lt`, `gt`, `signe`, and `anterior`. Many of the programs on this page import it rather than re-implementing these helpers from scratch.
+</Tip>
+
+## AND
+
+Boolean AND is multiplication. For the boolean encoding `0 / non-zero`, `a * b = 0` if and only if at least one operand is `0`, and `a * b ≠ 0` when both are non-zero. The program is therefore a one-liner:
+
+```text
+# and.cantor
+# AND booleà: l'entrada és un parell <a.b> codificat
+# a AND b en naturals és simplement a * b
+main mul
+```
+
+The input is a Cantor-encoded pair `<a, b>`, and `mul` computes `a * b` directly.
+
+```bash
+echo "1 1" | python3 cantor.py tests/programs/phase2-imports/and.cantor
+```
+
+```
+1
+```
+
+<Note>
+  Inputs beyond `0` and `1` are valid too. `mul` returns non-zero for any two non-zero inputs, preserving the semantics of "truthy AND truthy = truthy".
+</Note>
+
+## NOT
+
+Boolean NOT flips `0` to `1` and any non-zero value to `0`. The trick is `diff(1, x)` — monus clamps the subtraction so that `1 - x = 0` whenever `x ≥ 1`.
+
+```text
+# not.cantor
+main not_bool
+
+define par_1_x
+    [Aparella 1 amb x: <1.x>]
+    pair k_1 id
+
+define not_bool
+    [NOT booleà: 0->1, 1->0]
+    comp diff par_1_x
+```
+
+`par_1_x` builds the pair `<1, x>` by placing the constant `k_1` alongside the identity projection. `comp diff par_1_x` then computes `diff(1, x) = max(0, 1 - x)`, which equals `1` when `x = 0` and `0` otherwise.
+
+```bash
+echo "0" | python3 cantor.py tests/programs/phase2-imports/not.cantor
+```
+
+```
+1
+```
+
+## OR
+
+Boolean OR uses `signe` — a function that returns `0` for input `0` and `1` for any positive input — applied to the sum `a + b`:
+
+```text
+# or.cantor
+main or_bool
+
+import signe
+
+define or_bool
+    [OR booleà: <a.b> -> signe(a+b)]
+    comp signe add
+```
+
+`add` first sums the two inputs; the result is positive if and only if at least one of them was non-zero. `signe` then normalises that positive value to exactly `1`.
+
+```bash
+echo "1 0" | python3 cantor.py tests/programs/phase2-imports/or.cantor
+```
+
+```
+1
+```
+
+The `signe` function itself (defined in `signe.cantor`) computes `diff(x, anterior(x))`, which is `0` when `x = 0` and `1` when `x > 0`.
+
+## Equality
+
+`eq.cantor` imports the full `relacionals` library and exposes its `eq` function as the program entry point:
+
+```text
+# eq.cantor
+main eq
+import relacionals
+```
+
+The definition of `eq` lives in `relacionals.cantor`. It computes the **sum of absolute differences**:
+
+```text
+define diff_xy
+    [Diferència x - y (capada a 0)]
+    comp diff pair_fst_snd
+
+define diff_yx
+    [Diferència y - x (capada a 0)]
+    comp diff pair_snd_fst
+
+define sum_diffs
+    [Suma de les dues diferències]
+    comp add pair_diffxy_diffyx
+
+define pair_k1_sumdiffs
+    [Aparella 1 amb sum_diffs]
+    pair k_1 sum_diffs
+
+define eq
+    [Igualtat: 1 si x == y, 0 altrament]
+    comp diff pair_k1_sumdiffs
+```
+
+The idea: `diff(x, y) + diff(y, x)` equals `|x - y|`, which is `0` exactly when `x = y`. `eq` then computes `diff(1, |x - y|)` — monus maps `0` to `1` (equal) and anything positive to `0` (unequal).
+
+```bash
+echo "5 5" | python3 cantor.py tests/programs/phase3-extended/eq.cantor
+```
+
+```
+1
+```
+
+## Less Than and Greater Than
+
+`lt` and `gt` are also defined in `relacionals.cantor`, and each has a thin wrapper program that sets `main`:
+
+```text
+# lt.cantor
+main lt
+import relacionals
+```
+
+```text
+# gt.cantor
+main gt
+import relacionals
+```
+
+Their implementations in `relacionals.cantor` use `signe` and the directional monus functions:
+
+```text
+define signe
+    [Signe: 0 per 0, 1 per la resta]
+    comp diff aparella_amb_anterior
+
+define lt
+    [Menor que: 1 si x < y, 0 altrament]
+    comp signe diff_yx
+
+define gt
+    [Major que: 1 si x > y, 0 altrament]
+    comp signe diff_xy
+```
+
+- `lt(x, y)` applies `signe` to `diff(y, x) = max(0, y - x)`. That value is positive only when `y > x`, so `signe` returns `1` precisely when `x < y`.
+- `gt(x, y)` mirrors the pattern: `signe(diff(x, y))` is `1` only when `x > y`.
+
+```bash
+echo "2 5" | python3 cantor.py tests/programs/phase3-extended/lt.cantor
+```
+
+```
+1
+```
+
+```bash
+echo "7 2" | python3 cantor.py tests/programs/phase3-extended/gt.cantor
+```
+
+```
+1
+```
+
+## Conditional (if–then–else)
+
+`cond.cantor` implements a full if–then–else over natural numbers. Its input is a triple encoded as `<p, <a, b>>`: `p` is the condition, `a` is the true-branch value, and `b` is the false-branch value.
+
+```text
+# cond.cantor
+main cond
+extended
+import relacionals
+
+define p
+    [p a <p.<a.b>>]
+    comp fst id
+
+define a
+    [a a <p.<a.b>>]
+    comp fst snd
+
+define b
+    [b a <p.<a.b>>]
+    comp snd snd
+
+define bool_p
+    [0 si p és 0, 1 altrament]
+    comp signe p
+
+define pair_1_p
+    [<1.bool_p>]
+    pair k_1 bool_p
+
+define not_p
+    [1 - bool_p]
+    comp diff pair_1_p
+
+define p_a
+    [bool_p * a]
+    compair mul bool_p a
+
+define not_p_b
+    [(1 - bool_p) * b]
+    compair mul not_p b
+
+define pair_terms
+    [<p_a.not_p_b>]
+    pair p_a not_p_b
+
+define cond
+    [si p llavors a altrament b]
+    comp add pair_terms
+```
+
+The formula is: `cond = bool_p * a + not_p * b`. When `p ≠ 0`, `bool_p = 1` and `not_p = 0`, so the result is `a`. When `p = 0`, `bool_p = 0` and `not_p = 1`, so the result is `b`. Because both terms are multiplied to zero before being summed, only one branch contributes.
+
+<Steps>
+  <Step title="Normalise the condition">
+    `bool_p` applies `signe` to `p`, collapsing any truthy value to exactly `1`.
+  </Step>
+  <Step title="Compute the complement">
+    `not_p` computes `diff(1, bool_p)`, giving `1` when `p = 0` and `0` otherwise.
+  </Step>
+  <Step title="Gate each branch">
+    `p_a = bool_p * a` and `not_p_b = not_p * b` mask the inactive branch to zero.
+  </Step>
+  <Step title="Sum the branches">
+    `add(p_a, not_p_b)` returns the surviving branch value.
+  </Step>
+</Steps>
+
+```bash
+# p=3 (truthy), a=5, b=9 → returns a
+echo "3 5 9" | python3 cantor.py tests/programs/phase5-conditionals/cond.cantor
+```
+
+```
+5
+```
+
+```bash
+# p=0 (false), a=5, b=9 → returns b
+echo "0 5 9" | python3 cantor.py tests/programs/phase5-conditionals/cond.cantor
+```
+
+```
+9
+```
+
+## Maximum and Minimum
+
+`max` and `min` are compact programs that exploit monus directly, without needing the full `cond` machinery.
+
+**max** adds `y` to the excess of `x` over `y`:
+
+```text
+# max.cantor
+main max
+extended
+
+define y
+    [y a <x.y>]
+    comp snd id
+
+define diff_xy
+    [max(0, x - y)]
+    comp diff id
+
+define pair_y_diff
+    [<y.diff_xy>]
+    pair y diff_xy
+
+define max
+    [Màxim entre x i y]
+    comp add pair_y_diff
+```
+
+`diff_xy` computes `max(0, x - y)`. Adding that to `y` gives `y + max(0, x - y) = max(x, y)`.
+
+**min** subtracts that same excess from `x`:
+
+```text
+# min.cantor
+main min
+extended
+
+define x
+    [x a <x.y>]
+    comp fst id
+
+define diff_xy
+    [max(0, x - y)]
+    comp diff id
+
+define pair_x_diff
+    [<x.diff_xy>]
+    pair x diff_xy
+
+define min
+    [Mínim entre x i y]
+    comp diff pair_x_diff
+```
+
+`x - max(0, x - y) = min(x, y)` — when `x ≥ y` this is `x - (x - y) = y`; when `x < y`, `diff_xy = 0` so the result is `x`.
+
+```bash
+echo "7 2" | python3 cantor.py tests/programs/phase5-conditionals/max.cantor
+```
+
+```
+7
+```
+
+```bash
+echo "7 2" | python3 cantor.py tests/programs/phase5-conditionals/min.cantor
+```
+
+```
+2
+```

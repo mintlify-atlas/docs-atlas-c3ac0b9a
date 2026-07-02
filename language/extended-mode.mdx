@@ -1,0 +1,140 @@
+---
+title: "Extended Mode: compair and primrec in Cantor"
+sidebarTitle: "Extended Mode"
+description: "Enable extended mode with the 'extended' keyword to unlock compair and primrec, the combinators needed for conditional logic and primitive recursion."
+---
+
+Extended mode is an opt-in feature of the Cantor language that unlocks two additional combinators: `compair` and `primrec`. These combinators go beyond the simplest Cantor combinator set and are kept behind a flag to make the distinction between the base language and its more powerful extension explicit.
+
+## Enabling extended mode
+
+Add the bare keyword `extended` to your program immediately after the `main` directive and before any `import` or `define` statements:
+
+```text
+main my_function
+extended
+import some_library
+
+define my_function
+    [...]
+    compair add fst snd
+```
+
+The `extended` directive takes no arguments. Its presence sets an internal flag in the interpreter that allows `compair` and `primrec` bodies to be evaluated.
+
+---
+
+## What extended mode unlocks
+
+| Combinator | Base mode | Extended mode |
+|---|---|---|
+| `comp f g` | ✅ Available | ✅ Available |
+| `pair f g` | ✅ Available | ✅ Available |
+| `mu f` | ✅ Available | ✅ Available |
+| `k_1`, `id`, `add`, `mul`, `diff`, `fst`, `snd` | ✅ Available | ✅ Available |
+| `compair f g h` | ❌ Runtime error | ✅ Available |
+| `primrec f g h` | ❌ Runtime error | ✅ Available |
+
+Without `extended`, any attempt to evaluate a function whose body uses `compair` or `primrec` raises:
+
+```
+ValueError: 'compair' requires extended mode.
+ValueError: 'primrec' requires extended mode.
+```
+
+---
+
+## Extended mode propagates through imports
+
+If a program imports a file that contains the `extended` directive, extended mode is activated for the entire interpreter session — even if the importing program did not declare `extended` itself. The interpreter visits each import's `extendedDirective` node and enables the flag immediately.
+
+This means a shared library written with `extended` will transparently enable the feature for any program that imports it.
+
+<Note>
+If you are authoring a shared library that relies on `compair` or `primrec`, you do not need to document that users must add `extended` to their own programs — importing your file is sufficient to activate the mode.
+</Note>
+
+---
+
+## Example: factorial.cantor
+
+`tests/programs/phase5-primrec/factorial.cantor` is a canonical extended-mode program. It uses both `compair` (in multiple helper definitions) and `primrec` (for the recursion itself):
+
+```text
+# factorial.cantor
+main factorial
+extended
+import relacionals
+
+define k_0
+    [0]
+    compair diff k_1 k_1
+
+define segon
+    [2on]
+    comp fst snd
+
+define is_base
+    [zero?]
+    compair eq id k_0
+
+define step
+    [Recursiu fact]
+    compair mul fst segon
+
+define factorial
+    [x!]
+    primrec is_base k_1 step
+```
+
+`k_0` demonstrates a concise use of `compair`: `compair diff k_1 k_1` computes `diff(<k_1(x).k_1(x)>) = diff(<1.1>) = max(0, 1−1) = 0` — a constant-zero function built entirely from `compair` and built-ins.
+
+---
+
+## Example: div.cantor
+
+`tests/programs/phase4-minimization/div.cantor` uses `extended` alongside `mu`. The `mu` combinator itself does not require extended mode, but the predicate function it calls is built with `compair`:
+
+```text
+# div.cantor
+main div
+extended
+import relacionals
+
+define vx
+    [x a <<x.y>.q>]
+    comp fst fst
+
+define vy
+    [y a <<x.y>.q>]
+    comp snd fst
+
+define q1
+    [q+1 a <<x.y>.q>]
+    compair add snd k_1
+
+define yq1
+    [y*(q+1) a <<x.y>.q>]
+    compair mul vy q1
+
+define test_quotient
+    [Prova del quocient per mu(q), y*(q+1) > x a <<x.y>.q>]
+    compair gt yq1 vx
+
+define div
+    [Quocient de la divisió per cerca lineal]
+    mu test_quotient
+```
+
+`extended` is required here because `q1`, `yq1`, and `test_quotient` all use `compair`. Without it, calling `div` would fail at the first `compair` evaluation inside `mu`'s search loop.
+
+---
+
+## Why extended mode exists
+
+The base language — `comp`, `pair`, the seven built-ins, and `mu` — is already Turing-complete. Extended mode exists to provide two combinators that improve **expressiveness and readability** without changing what is theoretically computable:
+
+- **`compair`** eliminates the need for an intermediate `pair` helper definition every time you want to pass two computed values to a binary function. It is purely a convenience that reduces boilerplate.
+- **`primrec`** provides a structurally guaranteed terminating recursion scheme. Any `primrec` can in principle be expressed using `mu` with a suitable predicate, but `primrec` makes the finite nature of the recursion explicit and is therefore easier to reason about.
+
+By requiring an explicit opt-in, the language makes it clear whether a program relies only on the simplest combinators or on the fuller set.

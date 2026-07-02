@@ -1,0 +1,172 @@
+---
+title: "Cantor Interpreter Project Structure and Architecture"
+sidebarTitle: "Project Structure"
+description: "Explore the Cantor Interpreter's source layout, key modules, and how the ANTLR4 grammar, interpreter, parser utilities, and standard library fit together."
+---
+
+The Cantor interpreter is a small but purposeful Python project. Its source is divided into a root entry point, a `src/` package that holds the grammar and all interpreter logic, a `tests/` tree with both Python unit tests and end-to-end program tests, and a `scripts/` helper for running those program tests. Understanding this layout makes it easy to trace a program from user invocation all the way through to a printed result.
+
+## Directory tree
+
+```text
+.
+|-- Makefile
+|-- README.md
+|-- cantor.py
+|-- requirements.txt
+|-- scripts/
+|   `-- run_tests.py
+|-- src/
+|   |-- cantor.g4
+|   |-- cantor.py
+|   |-- cantor_interpreter.py
+|   |-- cantor_parser_utils.py
+|   `-- cantor_stdlib.py
+`-- tests/
+    |-- python/
+    |   `-- test_cantor_stdlib.py
+    `-- programs/
+        |-- phase1-core/
+        |-- phase2-imports/
+        |-- phase3-extended/
+        |-- phase4-minimization/
+        |-- phase5-conditionals/
+        `-- phase5-primrec/
+```
+
+<Note>
+Running `make` causes ANTLR to generate `cantorLexer.py`, `cantorParser.py`, and `cantorVisitor.py` inside `src/`. These files are derived from `src/cantor.g4` and are not committed to the repository. Do not edit them manually — any change will be overwritten the next time `make` is run.
+</Note>
+
+## File-by-file reference
+
+### `cantor.py` (root)
+
+The project-root entry point. Users invoke the interpreter with `python3 cantor.py <file.cantor>`. This file adds `src/` to `sys.path` and then delegates immediately to `src/cantor.py` via `runpy.run_path`, so the real logic lives entirely inside `src/`. Its sole job is to make the interpreter runnable without any installation step.
+
+### `src/cantor.g4`
+
+The ANTLR4 grammar that defines the full Cantor language syntax. It specifies parser rules (`program`, `mainDirective`, `extendedDirective`, `importDirective`, `functionDef`, `body`) and lexer rules (`MAIN`, `EXTENDED`, `IMPORT`, `DEFINE`, `PAIR`, `COMP`, `COMPAIR`, `MU`, `PRIMREC`, `DOC`, `IDENTIFIER`, `COMMENT`, `WS`). Running `make` compiles this file into `cantorLexer.py`, `cantorParser.py`, and `cantorVisitor.py` inside `src/`.
+
+### `src/cantor.py`
+
+The main interpreter module. It exposes two public callables:
+
+- **`run(filename, input_text)`** — resolves `filename` to an absolute path, calls `parse_cantor_file` to build a parse tree, creates a `CantorInterpreter`, visits the tree, encodes the raw input text with `encode_input_text`, and returns the integer result of calling `interpreter.evaluate(encoded_input)`.
+- **`main()`** — the CLI handler. Reads `sys.argv[1]` for the `.cantor` file path, reads all of stdin as the input text, calls `run`, prints the result, and returns an exit code.
+
+### `src/cantor_interpreter.py`
+
+Contains the `CantorInterpreter` class, which extends the ANTLR-generated `cantorVisitor`. It holds interpreter state — the resolved `base_dir`, the set of already-visited imports, the selected `main_function` name, the `user_functions` dictionary, and the `extended_mode` flag — and implements visitor methods for each grammar rule:
+
+- `visitProgram` — visits the main directive, the optional extended directive, all import directives, and all function definitions in order.
+- `visitMainDirective` — stores the function name declared after `main`.
+- `visitExtendedDirective` — sets `extended_mode = True`.
+- `visitImportDirective` — resolves the import name to a `.cantor` file path and delegates to `_load_import`.
+- `visitFunctionDef` — records the operation keyword and operand names in `user_functions`.
+- `evaluate(encoded_number)` — public entry point; calls `_evaluate_function` with the main function name.
+- `_evaluate_function` — dispatches to `BUILTIN_FUNCTIONS` or to one of the five private evaluators (`_evaluate_comp`, `_evaluate_pair`, `_evaluate_compair`, `_evaluate_mu`, `_evaluate_primrec`).
+
+### `src/cantor_parser_utils.py`
+
+Provides the single helper function `parse_cantor_file(file_path)`. It creates an ANTLR `FileStream` from the source file, passes it through `cantorLexer` to produce tokens, wraps those tokens in a `CommonTokenStream`, constructs a `cantorParser`, calls the root rule `parser.program()`, and raises `ValueError` if any syntax errors were detected. The returned value is a `cantorParser.ProgramContext` — the root of the ANTLR parse tree.
+
+### `src/cantor_stdlib.py`
+
+Implements the Cantor pairing mathematics and the seven built-in functions:
+
+| Function | Signature | Description |
+|---|---|---|
+| `pi(x, y)` | `(int, int) -> int` | Cantor pairing: encodes two naturals as one |
+| `unpi(z)` | `int -> (int, int)` | Inverse pairing: recovers `(x, y)` from `z` |
+| `pi_from_list(numbers)` | `list[int] -> int` | Encodes a list right-to-left via nested `pi` calls |
+| `unpi_list(z, n)` | `(int, int) -> list[int]` | Decodes a fixed-length Cantor-encoded list |
+| `parse_input_text(text)` | `str -> list[int]` | Splits and validates whitespace-separated naturals |
+| `encode_input_text(text)` | `str -> int` | Parses then encodes all input numbers as one Cantor number |
+| `k_1(_)` | `int -> int` | Constant function returning `1` |
+| `identity(z)` | `int -> int` | Returns the input unchanged |
+| `add(z)` | `int -> int` | Returns `x + y` from an encoded pair |
+| `mul(z)` | `int -> int` | Returns `x * y` from an encoded pair |
+| `diff(z)` | `int -> int` | Returns `max(0, x - y)` from an encoded pair |
+| `fst(z)` | `int -> int` | Returns the first element `x` from an encoded pair |
+| `snd(z)` | `int -> int` | Returns the second element `y` from an encoded pair |
+
+The `BUILTIN_FUNCTIONS` dict maps the string names used in `.cantor` source files (`"k_1"`, `"id"`, `"add"`, `"mul"`, `"diff"`, `"fst"`, `"snd"`) to their Python callables.
+
+### `scripts/run_tests.py`
+
+Scans `tests/programs/` recursively for `.cantor` files that have matching `.inp` and `.out` siblings, then runs the real CLI once per matched triple using `subprocess.run`. Prints `OK` or `FAIL` for each test, shows expected vs. actual on failures, and exits with code `1` if any test failed.
+
+### `tests/python/test_cantor_stdlib.py`
+
+Python unit tests for `src/cantor_stdlib.py`. Each `test_*` function asserts a specific mathematical property of the pairing functions or built-ins. The `main()` function at the bottom runs them all in sequence and prints `Python helper tests passed.` on success.
+
+### `tests/programs/`
+
+End-to-end test programs organized into six phase directories. Each test is a `.cantor` + `.inp` + `.out` triple. Phase directories also contain import-only helper files (such as `relacionals.cantor`) that have no `.inp`/`.out` counterparts.
+
+### `requirements.txt`
+
+Lists exactly two Python packages:
+
+```text
+antlr4-python3-runtime==4.13.1
+antlr4-tools
+```
+
+Install them with `pip install -r requirements.txt` or `make deps`.
+
+### `Makefile`
+
+Defines the following targets:
+
+| Target | What it does |
+|---|---|
+| `all` (default) | Generates `cantorLexer.py`, `cantorParser.py`, `cantorVisitor.py` from `src/cantor.g4` |
+| `deps` | Runs `pip install -r requirements.txt` |
+| `test` | Runs `test-python` then `test-programs` |
+| `test-python` | Runs `python3 tests/python/test_cantor_stdlib.py` |
+| `test-programs` | Depends on `all`, then runs `python3 scripts/run_tests.py` |
+| `clean` | Removes generated ANTLR files, `__pycache__` directories, and `.ruff_cache` |
+| `re` | Runs `clean` then `all` — a full rebuild from scratch |
+
+## Execution flow
+
+The following steps describe exactly what happens when a user runs a Cantor program from the command line.
+
+<Steps>
+  <Step title="CLI invocation">
+    The user runs:
+
+    ```bash
+    echo "3 2" | python3 cantor.py tests/programs/phase1-core/suma.cantor
+    ```
+
+    The root `cantor.py` prepends `src/` to `sys.path` and uses `runpy` to execute `src/cantor.py` as `__main__`, which calls `main()`.
+  </Step>
+  <Step title="Parsing the source file">
+    `main()` reads `sys.argv[1]` as the file path and all of stdin as the raw input text, then calls `run(filename, input_text)`.
+
+    Inside `run`, `parse_cantor_file(source_path)` creates an ANTLR `FileStream`, runs it through `cantorLexer` and `cantorParser`, and returns the root `ProgramContext`. A `ValueError` is raised immediately if any syntax errors are found.
+  </Step>
+  <Step title="Creating the interpreter">
+    `CantorInterpreter(source_path.parent)` is instantiated. It stores the directory of the source file so that `import` directives can resolve sibling `.cantor` files correctly. At this point the interpreter has no registered functions.
+  </Step>
+  <Step title="Visiting the parse tree">
+    `interpreter.visit(tree)` walks the parse tree top-down:
+
+    - `visitMainDirective` — records which function is designated as `main`.
+    - `visitExtendedDirective` — enables `compair` and `primrec` if the `extended` keyword is present.
+    - `visitImportDirective` (once per `import`) — parses the imported file and registers all its function definitions; already-visited files are skipped to prevent cycles.
+    - `visitFunctionDef` (once per `define`) — stores the operation and operand names in `user_functions`.
+  </Step>
+  <Step title="Encoding the input">
+    `encode_input_text(stdin)` splits the raw text into tokens, validates that each token is a natural number, and encodes the resulting list as a single Cantor number using nested `pi` calls. An empty stdin produces `0`.
+  </Step>
+  <Step title="Evaluating the main function">
+    `interpreter.evaluate(encoded_input)` calls `_evaluate_function(main_function, encoded_input)`. That method checks `BUILTIN_FUNCTIONS` first, then dispatches to the appropriate private evaluator based on the stored operation keyword (`comp`, `pair`, `compair`, `mu`, or `primrec`). The evaluation is recursive until only built-in calls remain.
+  </Step>
+  <Step title="Printing the result">
+    The integer returned by `evaluate` is printed to stdout by `main()`, and the process exits with code `0`. If any exception was raised during parsing or evaluation, the error message is printed to stderr and the exit code is `1`.
+  </Step>
+</Steps>

@@ -1,0 +1,141 @@
+---
+title: "Importing Functions Between Cantor Files"
+sidebarTitle: "Imports"
+description: "Use the import directive to load function definitions from other .cantor files, enabling modular composition and reuse across programs."
+---
+
+Cantor programs can be split across multiple `.cantor` files. The `import` directive loads all function definitions from another file into the current interpreter, letting you build libraries of reusable helpers and compose them freely.
+
+## The import directive
+
+**Syntax**
+
+```text
+import IDENTIFIER
+```
+
+`IDENTIFIER` is the file stem (name without `.cantor`) of the file to load. The directive must appear after the optional `extended` directive and before any `functionDef` blocks.
+
+**Example:**
+
+```text
+main signe
+import anterior
+```
+
+When the interpreter encounters `import anterior`, it resolves the path to `anterior.cantor` in the same directory as the running program file, parses it, and merges all its `define` blocks into the current function environment.
+
+---
+
+## What gets imported
+
+When a file is imported, only its **function definitions** are loaded. Specifically:
+
+- All `define` blocks from the imported file are added to the interpreter's function registry.
+- If the imported file itself contains `import` directives, those transitive imports are resolved recursively using the same rules.
+- If the imported file contains an `extended` directive, **extended mode is enabled for the entire program** — importing a file that uses `extended` is equivalent to having written `extended` in the main file.
+- The `main` directive of an imported file is **ignored**. Imports are function libraries, not programs — only the top-level file's `main` directive determines the entry point.
+
+---
+
+## Import resolution
+
+The path for `import foo` is resolved as:
+
+```
+<directory of the currently executing .cantor file> / foo.cantor
+```
+
+This means imports are always relative to the file that contains the `import` directive, not to the working directory of the shell or the location of the root program.
+
+<Warning>
+Some test folders contain their own copy of `relacionals.cantor` precisely because of this rule. If a program in `phase4-minimization/` imports `relacionals`, it loads `phase4-minimization/relacionals.cantor`, not any copy that might exist in a parent directory. Ensure that all imported files live alongside the main `.cantor` file that will be executed.
+</Warning>
+
+---
+
+## Circular import handling
+
+The interpreter tracks every file it has already loaded by **absolute path**. If the same file is encountered a second time (whether directly or through a chain of transitive imports), it is silently skipped. This prevents infinite recursion and duplicate definitions when two files both import the same shared library.
+
+---
+
+## Example: signe.cantor imports anterior.cantor
+
+Both files live in `tests/programs/phase2-imports/`. Here are their contents in full:
+
+**anterior.cantor** — defines the predecessor function:
+
+```text
+# anterior.cantor
+main anterior
+
+define aparella_amb_1
+    [Aparella l'entrada x amb 1: <x.1> ]
+    pair id k_1
+
+define anterior
+    [Anterior amb limit 0]
+    comp diff aparella_amb_1
+```
+
+**signe.cantor** — imports anterior and builds the sign function on top of it:
+
+```text
+# signe.cantor
+main signe
+
+import anterior
+
+define aparella_amb_anterior
+    [Aparella x amb el seu predecessor]
+    pair id anterior
+
+define signe
+    [Signe: 0 per 0, 1 per la resta]
+    comp diff aparella_amb_anterior
+```
+
+<Steps>
+  <Step title="Interpreter loads signe.cantor">
+    `main signe` sets the entry point. The interpreter sees `import anterior`.
+  </Step>
+  <Step title="anterior.cantor is parsed">
+    `aparella_amb_1` and `anterior` are registered. The `main anterior` directive in the imported file is ignored.
+  </Step>
+  <Step title="signe.cantor's definitions are registered">
+    `aparella_amb_anterior` and `signe` are added to the function registry.
+  </Step>
+  <Step title="Entry point is evaluated">
+    The interpreter calls `signe` on the encoded input. `signe` calls `anterior` (loaded from the import) transparently.
+  </Step>
+</Steps>
+
+How `signe` works:
+
+- `aparella_amb_anterior` applies `pair id anterior`: gives `<x.anterior(x)>` = `<x.max(0,x−1)>`.
+- `signe` applies `comp diff aparella_amb_anterior`: computes `diff(<x.max(0,x−1)>)` = `max(0, x − max(0, x−1))`.
+  - For `x = 0`: `diff(<0.0>)` = `0`. ✓
+  - For `x = 5`: `diff(<5.4>)` = `1`. ✓
+
+---
+
+## File-not-found behaviour
+
+If the interpreter cannot locate the imported file, it raises a runtime error:
+
+```
+ValueError: Import file not found: /path/to/missing.cantor
+```
+
+There is no fallback search path. The file must exist at the expected location before execution begins.
+
+---
+
+## Transitive extended mode
+
+Because importing an `extended` file propagates extended mode, a program that does not itself declare `extended` can inadvertently gain access to `compair` and `primrec` if it imports a file that does. This is intentional: it allows shared libraries to use extended combinators without forcing every consumer to redeclare the mode.
+
+<Note>
+If you want to ensure your program does not use extended features, do not import any file that contains the `extended` directive.
+</Note>

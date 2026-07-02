@@ -1,0 +1,208 @@
+---
+title: "Arithmetic Programs in Cantor: Addition, Predecessor, Division"
+sidebarTitle: "Arithmetic"
+description: "Worked examples of arithmetic programs in the Cantor language, from simple addition using built-ins to division via minimization."
+---
+
+Arithmetic is the natural starting point for exploring Cantor programs. Because every value is a natural number, operations like addition, subtraction (monus), and division emerge entirely from combining built-in functions — no special syntax required. The examples below progress from a one-liner that delegates to a built-in, through a hand-rolled predecessor function, all the way to division and modulo implemented via the mu (minimization) operator.
+
+<Tip>
+  For a reference of every built-in combinator (`add`, `diff`, `mul`, `pair`, `comp`, `compair`, `mu`, and friends), see the Language & Operations page.
+</Tip>
+
+## Addition
+
+The simplest arithmetic program in Cantor is addition. The built-in `add` already accepts a Cantor-encoded pair `<x, y>` and returns `x + y`, so the entire program is a single `main` declaration:
+
+```text
+# suma.cantor
+main add
+```
+
+The interpreter reads two space-separated numbers from standard input, encodes them as `<x, y>`, and passes the pair to `add`.
+
+```bash
+echo "3 2" | python3 cantor.py tests/programs/phase1-core/suma.cantor
+```
+
+```
+5
+```
+
+## Predecessor (anterior)
+
+The predecessor function returns `max(0, x - 1)` — it clamps at zero because there are no negative natural numbers. Rather than being a built-in, it is constructed from `diff` (monus: `max(0, a - b)`) and the pairing combinators.
+
+```text
+# anterior.cantor
+main anterior
+
+define aparella_amb_1
+    [Aparella l'entrada x amb 1: <x.1> ]
+    pair id k_1
+
+define anterior
+    [Anterior amb limit 0]
+    comp diff aparella_amb_1
+```
+
+<Steps>
+  <Step title="aparella_amb_1 — pair x with 1">
+    `pair id k_1` takes input `x` and produces the pair `<x, 1>`. `id` passes `x` through unchanged; `k_1` is the constant-1 function.
+  </Step>
+  <Step title="anterior — apply diff to ⟨x, 1⟩">
+    `comp diff aparella_amb_1` first calls `aparella_amb_1` to build `<x, 1>`, then feeds that pair into `diff`, which computes `max(0, x - 1)` — exactly the predecessor clamped at zero.
+  </Step>
+</Steps>
+
+```bash
+echo "3" | python3 cantor.py tests/programs/phase1-core/anterior.cantor
+```
+
+```
+2
+```
+
+## Division (mu-based)
+
+Integer division is implemented using the **mu operator** (unbounded minimisation). `mu f` searches for the smallest natural number `q` such that `f(<input, q>) ≠ 0`. For division, the predicate `test_quotient` returns non-zero when `y * (q + 1) > x`, meaning `q` is the largest quotient whose next step would overshoot.
+
+```text
+# div.cantor
+main div
+extended
+import relacionals
+
+define vx
+    [x a <<x.y>.q>]
+    comp fst fst
+
+define vy
+    [y a <<x.y.q>]
+    comp snd fst
+
+define q1
+    [q+1 a <<x.y>.q>]
+    compair add snd k_1
+
+define yq1
+    [y*(q+1) a <<x.y>.q>]
+    compair mul vy q1
+
+define test_quotient
+    [Prova del quocient per mu(q), y*(q+1) > x a <<x.y>.q>]
+    compair gt yq1 vx
+
+define div
+    [Quocient de la divisió per cerca lineal]
+    mu test_quotient
+```
+
+<Steps>
+  <Step title="Encode the inputs">
+    The program receives `<x, y>` where `x` is the dividend and `y` is the divisor. `mu` appends its search variable `q` to form `<<x, y>, q>`.
+  </Step>
+  <Step title="Extract components">
+    `vx` extracts `x` via `fst(fst(...))`, `vy` extracts `y` via `snd(fst(...))`, and `q1` computes `q + 1` via `add(snd(...), 1)`.
+  </Step>
+  <Step title="Build the predicate">
+    `yq1` computes `y * (q + 1)`. `test_quotient` then calls `gt(yq1, vx)`, returning `1` when `y * (q + 1) > x`.
+  </Step>
+  <Step title="Minimise">
+    `mu test_quotient` increments `q` from `0` until `test_quotient` fires. That first `q` satisfying `y * (q + 1) > x` is the integer quotient `⌊x / y⌋`.
+  </Step>
+</Steps>
+
+```bash
+echo "7 2" | python3 cantor.py tests/programs/phase4-minimization/div.cantor
+```
+
+```
+3
+```
+
+<Note>
+  The `div.cantor` program requires `extended` mode (declared with the `extended` keyword) because it uses `compair` and imports `relacionals`. Run it from the project root where the library files are accessible.
+</Note>
+
+## Modulo
+
+The modulo program builds directly on `div`. Once the quotient `q = ⌊x / y⌋` is known, the remainder is `x - y * q`.
+
+```text
+# mod.cantor
+main mod
+extended
+import div
+
+define x
+    [x a <x.y>]
+    comp fst id
+
+define y
+    [y a <x.y>]
+    comp snd id
+
+define q
+    [Quocient x / y]
+    comp div id
+
+define yq
+    [y * (x / y)]
+    compair mul y q
+
+define mod
+    [Residuu de x entre y]
+    compair diff x yq
+```
+
+`x` and `y` project each component of the input pair. `q` delegates to the imported `div` to find the quotient, `yq` multiplies `y` by `q`, and finally `mod` applies `diff` to compute `x - y * q` (clamped at zero, but the subtraction is always exact for a valid modulus).
+
+```bash
+echo "7 2" | python3 cantor.py tests/programs/phase4-minimization/mod.cantor
+```
+
+```
+1
+```
+
+## Even Parity
+
+`even` chains `mod` with an equality check to determine whether a number is divisible by 2.
+
+```text
+# even.cantor
+main even
+extended
+import mod
+
+define k_0
+    [0]
+    compair diff k_1 k_1
+
+define k_2
+    [2]
+    compair add k_1 k_1
+
+define pair_x_2
+    [<x.2>]
+    pair id k_2
+
+define mod2
+    [x mod 2]
+    comp mod pair_x_2
+
+define even
+    [1 si x és parell, 0 altrament]
+    compair eq mod2 k_0
+```
+
+`k_0` is synthesised as `diff(1, 1) = 0` and `k_2` as `add(1, 1) = 2`. `pair_x_2` pairs the input with the constant 2, `mod2` feeds that pair to `mod`, and `even` compares the result to `k_0` with `eq` — returning `1` if `x mod 2 = 0`, otherwise `0`.
+
+```bash
+echo "8" | python3 cantor.py tests/programs/phase4-minimization/even.cantor
+```
+
+```
+1
+```

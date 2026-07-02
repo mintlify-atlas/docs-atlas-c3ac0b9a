@@ -1,0 +1,262 @@
+---
+title: "Cantor Pairing Function: Encoding Natural Numbers"
+sidebarTitle: "Cantor Pairing"
+description: "How Cantor's pairing function encodes two or more natural numbers into one, enabling multi-argument functions in the Cantor Interpreter's single-argument model."
+---
+
+Every function in the Cantor language takes exactly one natural number as its argument. Real programs, however, often need to pass two or more values at once — think addition, which needs both an `x` and a `y`. The solution is Georg Cantor's *pairing function*: a mathematical bijection that encodes any two natural numbers into a single natural number, losslessly. The Cantor Interpreter relies on this encoding everywhere: from the CLI's input pipeline all the way down to how built-ins like `add` and `mul` unpack their arguments at runtime.
+
+## What is Cantor pairing?
+
+Cantor's pairing function `π: ℕ × ℕ → ℕ` is a **bijection** — a perfect one-to-one mapping from pairs of natural numbers to natural numbers. Every pair `(x, y)` maps to a unique natural number, and every natural number maps back to exactly one pair. No information is lost, and no two distinct pairs share the same encoding.
+
+The formula is:
+
+```text
+π(x, y) = ((x + y)(x + y + 1)) / 2 + y
+```
+
+The quantity `(x + y)` is called the *diagonal* of the pair. The function counts along successive diagonals of the ℕ × ℕ grid: the diagonal where `x + y = 0` contains only `(0, 0)`, the diagonal where `x + y = 1` contains `(1, 0)` and `(0, 1)`, and so on. Within each diagonal, pairs are ordered by increasing `y`.
+
+---
+
+## Python implementation
+
+The pairing helpers live in `src/cantor_stdlib.py` and are the foundation every other stdlib function builds on.
+
+### Encoding: `pi`
+
+```python
+def pi(x: int, y: int) -> int:
+    """Encode two natural numbers with Cantor's pairing function."""
+    return ((x + y) * (x + y + 1)) // 2 + y
+```
+
+### Decoding: `unpi`
+
+```python
+def unpi(z: int) -> tuple[int, int]:
+    """Decode a Cantor-paired natural number."""
+    w = (isqrt(8 * z + 1) - 1) // 2
+    t = (w * w + w) // 2
+    y = z - t
+    x = w - y
+    return x, y
+```
+
+The inverse works by recovering the diagonal index `w` from `z` using an integer square root, then computing the offset within that diagonal to separate `x` from `y`. Both operations use only integer arithmetic, so there is no floating-point rounding risk.
+
+**Round-trip example** (from the test suite):
+
+```python
+from cantor_stdlib import pi, unpi
+
+assert pi(47, 32) == 3192
+assert unpi(3192) == (47, 32)
+```
+
+---
+
+## List encoding
+
+Two numbers can be encoded with `pi`, but programs often need to pass three or more values (for example, a triple `(a, b, c)`). The interpreter handles this by folding the list right-to-left, nesting pairs:
+
+```text
+π_list([a, b, c]) = π(a, π(b, c))
+```
+
+### `pi_from_list`
+
+```python
+def pi_from_list(numbers: list[int]) -> int:
+    """Encode a list of natural numbers from right to left."""
+    if not numbers:
+        return 0
+
+    encoded_value = numbers[-1]
+
+    for number in reversed(numbers[:-1]):
+        encoded_value = pi(number, encoded_value)
+
+    return encoded_value
+```
+
+**Example** (from the test suite):
+
+```python
+from cantor_stdlib import pi_from_list
+
+# pi_from_list([1, 3, 2])
+# = pi(1, pi(3, 2))
+# = pi(1, 17)
+# = 188
+assert pi_from_list([1, 3, 2]) == 188
+```
+
+Step by step:
+1. `pi(3, 2) = ((3+2)(3+2+1))/2 + 2 = (5 × 6)/2 + 2 = 15 + 2 = 17`
+2. `pi(1, 17) = ((1+17)(1+17+1))/2 + 17 = (18 × 19)/2 + 17 = 171 + 17 = 188`
+
+### `unpi_list`
+
+```python
+def unpi_list(z: int, num_elements: int) -> list[int]:
+    """Decode a fixed-size Cantor-encoded list."""
+    if num_elements <= 0:
+        return []
+
+    result = []
+    current_value = z
+
+    for _ in range(num_elements - 1):
+        head, tail = unpi(current_value)
+        result.append(head)
+        current_value = tail
+
+    result.append(current_value)
+    return result
+```
+
+`unpi_list` mirrors `pi_from_list`: it repeatedly splits off the head and recurses into the tail, stopping when the expected number of elements have been extracted. You must supply the correct count — if `num_elements` does not match what was originally encoded, the decoded values will be meaningless.
+
+---
+
+## CLI input encoding
+
+When you run a Cantor program from the command line and provide whitespace-separated numbers on stdin, the interpreter encodes them into a single natural number before calling the program's `main` function.
+
+### `parse_input_text`
+
+```python
+def parse_input_text(input_text: str) -> list[int]:
+    """Parse whitespace-separated natural numbers."""
+    tokens = input_text.split()
+
+    for token in tokens:
+        if not token.isdigit():
+            raise ValueError("all inputs must be natural numbers")
+
+    return [int(token) for token in tokens]
+```
+
+### `encode_input_text`
+
+```python
+def encode_input_text(input_text: str) -> int:
+    """Encode raw input text as a single Cantor number."""
+    return pi_from_list(parse_input_text(input_text))
+```
+
+`encode_input_text` is the single entry point the CLI uses. It parses the raw text into a list of integers with `parse_input_text`, then folds them into one number with `pi_from_list`.
+
+<Note>
+Empty input — an empty string or only whitespace — encodes to `0`. This is because `pi_from_list([])` returns `0` by convention, and many Cantor programs treat `0` as a neutral or base value.
+</Note>
+
+<Warning>
+Any token that is not a non-negative integer (for example `"hello"`, `"-3"`, or `"1.5"`) causes `parse_input_text` to raise a `ValueError`. The interpreter will abort before the program runs. Always pass whitespace-separated natural numbers on stdin.
+</Warning>
+
+---
+
+## Stdlib function summary
+
+<CardGroup cols={2}>
+  <Card title="pi(x, y)" icon="arrow-right-arrow-left">
+    Encode two naturals as one: `((x+y)(x+y+1))/2 + y`.
+  </Card>
+  <Card title="unpi(z)" icon="arrow-right-arrow-left">
+    Decode one natural back to a pair `(x, y)` using integer square root.
+  </Card>
+  <Card title="pi_from_list(numbers)" icon="list">
+    Right-fold a list of naturals into one number by nesting `pi` calls.
+  </Card>
+  <Card title="unpi_list(z, n)" icon="list">
+    Recover a list of `n` naturals from a single encoded value.
+  </Card>
+  <Card title="parse_input_text(text)" icon="keyboard">
+    Split a whitespace-separated string into a validated list of naturals.
+  </Card>
+  <Card title="encode_input_text(text)" icon="terminal">
+    Parse and encode stdin text into a single Cantor number for the interpreter.
+  </Card>
+</CardGroup>
+
+---
+
+## How pairing enables n-ary functions
+
+Because `π` is a bijection, any function `f(x, y)` can be reimplemented as `f'(z)` where `z = π(x, y)`. The function body simply calls `unpi(z)` to recover `(x, y)`. This is exactly what every arithmetic built-in does:
+
+```python
+def add(z: int) -> int:
+    x, y = unpi(z)   # recover the two arguments
+    return x + y
+```
+
+The entire language can therefore be built on a single-argument model without sacrificing expressiveness. The `pair` combinator in the language itself is what *constructs* encoded pairs at the language level:
+
+```text
+pair f g   →   λx. π(f(x), g(x))
+```
+
+So `pair id k_1` applied to `n` yields `π(n, 1)`, which can then be passed to `add` to compute `n + 1`.
+
+---
+
+## Worked example: `suma.cantor` with input `3 2`
+
+The program `tests/programs/phase1-core/suma.cantor` is a single line:
+
+```text
+main add
+```
+
+Running it with input `"3 2"` goes through these steps:
+
+**Step 1 — Encode the input.**
+
+```text
+encode_input_text("3 2")
+  → parse_input_text("3 2") = [3, 2]
+  → pi_from_list([3, 2]) = pi(3, 2)
+  = ((3 + 2) × (3 + 2 + 1)) / 2 + 2
+  = (5 × 6) / 2 + 2
+  = 15 + 2
+  = 17
+```
+
+The single number `17` is passed to `main`.
+
+**Step 2 — Execute `add(17)`.**
+
+```text
+add(17)
+  → unpi(17) = (3, 2)   # recover the original pair
+  → 3 + 2 = 5
+```
+
+**Step 3 — Output.**
+
+```bash
+echo "3 2" | python3 cantor.py tests/programs/phase1-core/suma.cantor
+```
+
+```text
+5
+```
+
+The round-trip `3, 2 → π → 17 → unπ → 3, 2 → add → 5` demonstrates the full encoding lifecycle in one minimal program.
+
+---
+
+## Further reading
+
+<CardGroup cols={2}>
+  <Card title="Built-in Functions" icon="function" href="/stdlib/builtin-functions">
+    Reference for all seven built-ins (`k_1`, `id`, `add`, `mul`, `diff`, `fst`, `snd`) that consume encoded pairs.
+  </Card>
+  <Card title="Language Reference" icon="book" href="/language/operations">
+    How `pair`, `comp`, `compair`, `mu`, and `primrec` wire functions together using the pairing model.
+  </Card>
+</CardGroup>

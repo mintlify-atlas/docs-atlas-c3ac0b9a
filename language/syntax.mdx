@@ -1,0 +1,276 @@
+---
+title: "Cantor Language Syntax and Grammar Reference"
+sidebarTitle: "Syntax"
+description: "Complete syntax reference for Cantor programs: grammar rules, keywords, identifiers, documentation blocks, comments, and whitespace handling."
+---
+
+A Cantor program is a plain UTF-8 text file with the `.cantor` extension. The grammar is defined in `src/cantor.g4` using ANTLR4; the parser and lexer are generated from that file. This page walks through every grammar rule, every keyword, and every lexical convention the language uses.
+
+## Complete grammar
+
+The following is the full ANTLR4 grammar for Cantor, reproduced verbatim from `src/cantor.g4`:
+
+```text
+// Grammar for the extended subset of the Cantor language.
+grammar cantor;
+
+// Parser rules describe the structure of a valid Cantor program.
+
+program
+    : mainDirective extendedDirective? importDirective* functionDef* EOF
+    ;
+
+// A program starts by selecting the function to execute.
+mainDirective
+    : MAIN IDENTIFIER
+    ;
+
+// Extended mode enables compair.
+extendedDirective
+    : EXTENDED
+    ;
+
+// Imports load function definitions from another .cantor file.
+importDirective
+    : IMPORT IDENTIFIER
+    ;
+
+// A user function has a name, a documentation block and a body.
+functionDef
+    : DEFINE IDENTIFIER DOC body
+    ;
+
+// A body can be pair, comp, compair, mu or primrec.
+body
+    : PAIR IDENTIFIER IDENTIFIER
+    | COMP IDENTIFIER IDENTIFIER
+    | COMPAIR IDENTIFIER IDENTIFIER IDENTIFIER
+    | MU IDENTIFIER
+    | PRIMREC IDENTIFIER IDENTIFIER IDENTIFIER
+    ;
+
+// Lexer rules describe concrete text patterns.
+
+MAIN      : 'main'    ;
+EXTENDED  : 'extended';
+IMPORT    : 'import'  ;
+DEFINE    : 'define'  ;
+PAIR      : 'pair'    ;
+COMP      : 'comp'    ;
+COMPAIR   : 'compair' ;
+MU        : 'mu'      ;
+PRIMREC   : 'primrec' ;
+
+// Documentation blocks are written between square brackets.
+DOC
+    : '[' .*? ']'
+    ;
+
+// Function names.
+IDENTIFIER
+    : [a-zA-Z_][a-zA-Z_0-9]*
+    ;
+
+// Comments start with # and continue until the end of the line.
+COMMENT
+    : '#' ~[\r\n]* -> skip
+    ;
+
+// Spaces, tabs and new lines are ignored by the parser.
+WS
+    : [ \t\r\n]+ -> skip
+    ;
+```
+
+## Grammar rule reference
+
+### `program`
+
+```text
+program : mainDirective extendedDirective? importDirective* functionDef* EOF ;
+```
+
+A program consists of four sections, each of which must appear in this exact order:
+
+1. Exactly one `mainDirective`
+2. An optional `extendedDirective`
+3. Zero or more `importDirective`s
+4. Zero or more `functionDef`s
+
+Any other ordering is a parse error.
+
+---
+
+### `mainDirective`
+
+```text
+mainDirective : MAIN IDENTIFIER ;
+```
+
+Selects the entry-point function to evaluate. `IDENTIFIER` must be the name of a function defined in this file or in one of its imports, or a built-in function name.
+
+**Example:**
+
+```text
+main anterior
+```
+
+---
+
+### `extendedDirective`
+
+```text
+extendedDirective : EXTENDED ;
+```
+
+The bare keyword `extended` on its own line enables extended mode for the entire program. Extended mode is required to use `compair` and `primrec`. This directive has no arguments.
+
+**Example:**
+
+```text
+main factorial
+extended
+```
+
+---
+
+### `importDirective`
+
+```text
+importDirective : IMPORT IDENTIFIER ;
+```
+
+Loads function definitions from `<IDENTIFIER>.cantor` in the same directory as the running program. Imported function definitions are merged into the current interpreter state. Multiple `import` directives may appear; each is processed in order.
+
+**Example:**
+
+```text
+import relacionals
+```
+
+---
+
+### `functionDef`
+
+```text
+functionDef : DEFINE IDENTIFIER DOC body ;
+```
+
+Defines a named function. The three parts are:
+
+- `IDENTIFIER` — the function's name
+- `DOC` — a documentation block enclosed in `[` and `]`
+- `body` — one combinator expression
+
+**Example:**
+
+```text
+define anterior
+    [Anterior amb limit 0]
+    comp diff aparella_amb_1
+```
+
+---
+
+### `body`
+
+```text
+body
+    : PAIR    IDENTIFIER IDENTIFIER
+    | COMP    IDENTIFIER IDENTIFIER
+    | COMPAIR IDENTIFIER IDENTIFIER IDENTIFIER
+    | MU      IDENTIFIER
+    | PRIMREC IDENTIFIER IDENTIFIER IDENTIFIER
+    ;
+```
+
+A function body is exactly one combinator application. Each alternative takes a fixed number of function-name arguments:
+
+| Combinator | Argument count | Meaning |
+|---|---|---|
+| `pair f g` | 2 | Cantor-pair the outputs of `f` and `g` |
+| `comp f g` | 2 | Compose: `f(g(x))` |
+| `compair f g h` | 3 | Compose after pairing: `f(<g(x).h(x)>)` — extended only |
+| `mu f` | 1 | Minimization over `f` |
+| `primrec f g h` | 3 | Primitive recursion — extended only |
+
+Every identifier in a body must be either a built-in name or a name that will be defined by the time the function is called (definitions may appear after uses — the interpreter resolves names lazily at call time).
+
+---
+
+## Keywords
+
+The following words are reserved and cannot be used as function names:
+
+```text
+main  extended  import  define  pair  comp  compair  mu  primrec
+```
+
+---
+
+## Lexical conventions
+
+### `IDENTIFIER`
+
+```text
+IDENTIFIER : [a-zA-Z_][a-zA-Z_0-9]* ;
+```
+
+A function name starts with a letter or underscore and may contain letters, underscores, and digits thereafter. Examples: `anterior`, `k_1`, `diff_xy`, `test_quotient`.
+
+### `DOC` — documentation blocks
+
+```text
+DOC : '[' .*? ']' ;
+```
+
+A documentation block is any text enclosed in square brackets. It may span multiple lines and may contain any characters except an unescaped `]`. The interpreter parses but ignores the content of `DOC` tokens — they exist solely for inline documentation.
+
+<Note>
+`DOC` blocks are required by the grammar: every `functionDef` must have one. If you have nothing meaningful to write, use `[]` as a minimal placeholder. The interpreter does not evaluate or validate the text inside brackets.
+</Note>
+
+### Comments
+
+```text
+COMMENT : '#' ~[\r\n]* -> skip ;
+```
+
+A `#` character starts a line comment. Everything from `#` to the end of the line is discarded by the lexer. Comments may appear anywhere whitespace is allowed.
+
+### Whitespace
+
+```text
+WS : [ \t\r\n]+ -> skip ;
+```
+
+Spaces, horizontal tabs, carriage returns, and newlines are all treated as whitespace and skipped by the parser. Indentation and blank lines are purely cosmetic.
+
+---
+
+## Annotated example program
+
+The following program from `tests/programs/phase1-core/anterior.cantor` computes the predecessor function — `anterior(0) = 0`, `anterior(n) = n − 1` — using only core combinators and built-ins:
+
+```text
+# anterior.cantor
+main anterior                       # entry point is the function named 'anterior'
+
+define aparella_amb_1               # define a helper called 'aparella_amb_1'
+    [Aparella l'entrada x amb 1: <x.1> ]   # documentation block (ignored at runtime)
+    pair id k_1                     # body: pair(id, k_1) → <x, 1>
+
+define anterior                     # define the main function
+    [Anterior amb limit 0]          # documentation block
+    comp diff aparella_amb_1        # body: diff(aparella_amb_1(x)) = diff(<x, 1>) = max(0, x−1)
+```
+
+<Accordion title="How the predecessor works step by step">
+Given input `x`:
+
+1. `aparella_amb_1` applies `pair id k_1`: both `id(x) = x` and `k_1(x) = 1` are computed, then Cantor-paired to give `<x.1>`.
+2. `anterior` applies `comp diff aparella_amb_1`: first `aparella_amb_1(x)` produces `<x.1>`, then `diff(<x.1>)` returns `max(0, x − 1)`.
+
+When `x = 0`: `diff(<0.1>) = max(0, 0 − 1) = 0`. ✓  
+When `x = 5`: `diff(<5.1>) = max(0, 5 − 1) = 4`. ✓
+</Accordion>

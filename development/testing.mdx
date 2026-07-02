@@ -1,0 +1,156 @@
+---
+title: "Testing the Cantor Interpreter: Unit and Program Tests"
+sidebarTitle: "Testing"
+description: "Run unit tests for the standard library and end-to-end tests for Cantor programs using make targets, with details on the .cantor/.inp/.out test format."
+---
+
+The Cantor interpreter ships with two complementary layers of tests: Python unit tests that verify the mathematical correctness of the pairing functions in isolation, and end-to-end program tests that run real `.cantor` files through the CLI and compare their output against expected results. Both layers are wired into `make` targets so they can be run individually or together.
+
+## Python unit tests
+
+The file `tests/python/test_cantor_stdlib.py` contains unit tests for every function exported by `src/cantor_stdlib.py`. These tests exercise the pairing math directly in Python, without invoking the ANTLR parser or the interpreter at all. They are the fastest way to confirm that the foundational numeric encoding is sound.
+
+The tests cover:
+
+- **`pi` / `unpi` round-trip** — encodes and decodes pairs, including the reference example `pi(47, 32) == 3192`.
+- **List encoding / decoding** — verifies `pi_from_list` and `unpi_list` across empty lists, singletons, and multi-element lists.
+- **Input encoding** — checks `encode_input_text("1 3 2") == 188` and edge cases such as empty input and non-natural input raising `ValueError`.
+- **`k_1`** — asserts the constant-one function returns `1` for any input.
+- **`identity`** — confirms `identity(v) == v` and that the `"id"` key in `BUILTIN_FUNCTIONS` maps to the same function.
+- **`add`** — verifies `add(pi(3, 4)) == 7` and similar pairs.
+- **`mul`** — checks multiplication via encoded pairs.
+- **`diff`** — checks truncated subtraction `max(0, x - y)` via encoded pairs.
+- **`fst` / `snd`** — decodes the first and second component of every encoded pair.
+
+Run the unit tests with either command:
+
+```bash
+python3 tests/python/test_cantor_stdlib.py
+```
+
+```bash
+make test-python
+```
+
+A passing run prints a single confirmation line:
+
+```text
+Python helper tests passed.
+```
+
+<Tip>
+The test file inserts `src/` into `sys.path` at the top, so it can be executed from any working directory without installing the package first.
+</Tip>
+
+## Cantor program tests
+
+End-to-end tests live under `tests/programs/`. Each test is a group of three files that share the same stem:
+
+- **`.cantor`** — the Cantor source program to execute.
+- **`.inp`** — whitespace-separated natural numbers that are fed to the program via stdin.
+- **`.out`** — the single line of expected stdout output.
+
+Any `.cantor` file that does not have a matching `.inp` and `.out` counterpart is treated as an import-only dependency (e.g., `relacionals.cantor`) and is silently skipped by the test runner.
+
+The test runner (`scripts/run_tests.py`) discovers tests by recursively scanning `tests/programs/` for `.cantor` files, then looks for the matching `.inp` and `.out` files beside each one. For every matched triple, it invokes the real CLI:
+
+```bash
+python3 cantor.py <file.cantor>
+```
+
+with the contents of `.inp` piped to stdin, and compares the captured stdout with the contents of `.out`.
+
+### Running the program tests
+
+```bash
+python3 scripts/run_tests.py
+```
+
+```bash
+make test-programs
+```
+
+<Note>
+`make test-programs` depends on the `all` target, so it automatically rebuilds the ANTLR-generated parser files before running the tests. If you run the script directly, make sure `make` has been run first.
+</Note>
+
+### Output format
+
+Each test prints one line: `OK` if stdout matched the expectation, or `FAIL` followed by the expected and actual values plus any stderr output.
+
+```text
+=== Running Cantor program tests ===
+OK   phase1-core/suma
+OK   phase2-imports/signe
+FAIL phase3-extended/fib
+     expected: 8
+     actual:   5
+     error:
+
+=== Summary: 2 passed, 1 failed ===
+```
+
+The process exits with code `0` when all tests pass and `1` when any test fails.
+
+## Test phases
+
+Tests are organized into phase directories that correspond to language feature groups:
+
+| Phase | Directory | What is tested |
+|---|---|---|
+| 1 | `phase1-core` | Built-ins, `comp`, `pair` |
+| 2 | `phase2-imports` | `import` directive |
+| 3 | `phase3-extended` | `compair`, extended mode |
+| 4 | `phase4-minimization` | `mu` operator |
+| 5 | `phase5-conditionals` | Conditional functions |
+| 5 | `phase5-primrec` | Primitive recursion |
+
+## Make targets
+
+| Target | What it does |
+|---|---|
+| `make test` | Runs both `test-python` and `test-programs` |
+| `make test-python` | Runs only the Python unit tests |
+| `make test-programs` | Builds the parser first, then runs the Cantor program tests |
+
+## Adding a new test
+
+<Steps>
+  <Step title="Create the .cantor source file">
+    Write your Cantor program and save it under the appropriate phase directory, for example `tests/programs/phase1-core/my_test.cantor`. Make sure the file begins with a `main` directive that selects the function to evaluate.
+
+    ```text
+    main my_function
+    define my_function [returns input plus one] comp add k_1
+    ```
+  </Step>
+  <Step title="Create the .inp input file">
+    Create `tests/programs/phase1-core/my_test.inp` containing the whitespace-separated natural numbers to feed as stdin. For a program expecting a single input, write just one number:
+
+    ```text
+    5
+    ```
+
+    For a program expecting a pair, write two numbers on the same line:
+
+    ```text
+    3 4
+    ```
+  </Step>
+  <Step title="Create the .out expected output file">
+    Create `tests/programs/phase1-core/my_test.out` containing the exact output your program should produce. The test runner strips leading and trailing whitespace before comparing, so a single number on one line is sufficient:
+
+    ```text
+    7
+    ```
+  </Step>
+  <Step title="Run the test runner to verify">
+    Execute the program test suite to confirm your new test is discovered and passes:
+
+    ```bash
+    python3 scripts/run_tests.py
+    ```
+
+    You should see a line like `OK   phase1-core/my_test` in the output. If you see `FAIL`, review the expected vs. actual values printed below the test name.
+  </Step>
+</Steps>

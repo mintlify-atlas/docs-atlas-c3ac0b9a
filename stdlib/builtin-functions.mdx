@@ -1,0 +1,299 @@
+---
+title: "Cantor Built-in Functions: k_1, id, add, mul, diff, fst, snd"
+sidebarTitle: "Built-in Functions"
+description: "Reference for all seven Cantor built-in functions with their signatures, behavior on encoded pairs, and usage in function definitions."
+---
+
+The Cantor Interpreter ships seven built-in functions that are always in scope — no `import` statement required. They cover the essential building blocks of computation over natural numbers: constants, identity, arithmetic, and pair projection. All seven are defined in `src/cantor_stdlib.py` and registered in the `BUILTIN_FUNCTIONS` dictionary, which the interpreter consults when it resolves a name in a Cantor program.
+
+## Single-argument model
+
+Every Cantor function takes exactly **one natural number** as its argument. Functions that logically operate on two values — such as `add` or `mul` — receive a single Cantor-encoded pair `<x, y>` instead of two separate arguments. You construct that pair in a program using the `pair` combinator, which calls `π(f(n), g(n))` and passes the result to the next function. See the [Cantor Pairing](/stdlib/cantor-pairing) page for how the encoding works.
+
+<Note>
+The five arithmetic and projection functions — `add`, `mul`, `diff`, `fst`, and `snd` — each expect their input to be a **Cantor-encoded pair**. Passing a raw integer that was not produced by `π` will still run without error, but the result will be the arithmetic on whatever `unpi` happens to decompose that integer into. Always use `pair` (or the `pi` helper in tests) to build the input.
+</Note>
+
+---
+
+## `BUILTIN_FUNCTIONS` registry
+
+The interpreter resolves built-in names by looking them up in this dictionary before searching any user-defined scope:
+
+```python
+BUILTIN_FUNCTIONS = {
+    "k_1": k_1,
+    "id":  identity,
+    "add": add,
+    "mul": mul,
+    "diff": diff,
+    "fst": fst,
+    "snd": snd,
+}
+```
+
+The key is the name used in `.cantor` source files; the value is the Python callable that implements it.
+
+---
+
+## Function reference
+
+### `k_1`
+
+```python
+def k_1(_: int) -> int:
+    """Return the constant value 1."""
+    return 1
+```
+
+`k_1` ignores its input entirely and always returns `1`. It is the simplest way to introduce the constant `1` into a data-flow pipeline.
+
+| Property | Value |
+|----------|-------|
+| **Input** | Any natural number (ignored) |
+| **Output** | `1` |
+| **Pair input required** | No |
+
+**Example — building `<x, 1>` for every input:**
+
+```text
+# pair_id_k1.cantor
+main pair id k_1
+```
+
+For any input `n`, `pair id k_1` evaluates `π(id(n), k_1(n))` = `π(n, 1)`.
+
+```bash
+echo "5" | python3 cantor.py pair_id_k1.cantor
+# → encodes ⟨5, 1⟩ as a single natural number
+```
+
+---
+
+### `id`
+
+```python
+def identity(z: int) -> int:
+    """Return the input unchanged."""
+    return z
+```
+
+`identity` is registered under the name `id` in `BUILTIN_FUNCTIONS`. It passes its argument through without modification: `id(x) = x` for all `x`.
+
+| Property | Value |
+|----------|-------|
+| **Input** | Any natural number |
+| **Output** | The same natural number |
+| **Pair input required** | No |
+
+**Example — forwarding input as the first component of a pair:**
+
+```text
+# The expression `pair id k_1` constructs ⟨x, 1⟩ for input x.
+main pair id k_1
+```
+
+<Tip>
+`id` is most useful as the "no-op" slot inside `pair`, `comp`, or `compair` expressions when you want to forward the current value without any transformation.
+</Tip>
+
+---
+
+### `add`
+
+```python
+def add(z: int) -> int:
+    """Return x + y from an encoded pair."""
+    x, y = unpi(z)
+    return x + y
+```
+
+`add` decodes its argument as a Cantor pair `<x, y>` and returns `x + y`.
+
+| Property | Value |
+|----------|-------|
+| **Input** | Cantor-encoded pair `π(x, y)` |
+| **Output** | `x + y` |
+| **Pair input required** | **Yes** |
+
+**Example:**
+
+```python
+from cantor_stdlib import add, pi
+
+# pi(3, 2) == 17
+assert add(pi(3, 2)) == 5   # 3 + 2
+```
+
+**As a complete program** (`suma.cantor`):
+
+```text
+main add
+```
+
+```bash
+echo "3 2" | python3 cantor.py tests/programs/phase1-core/suma.cantor
+# → 5
+```
+
+The CLI encodes `"3 2"` as `π(3, 2) = 17` before calling `add`, which unpacks it back to `(3, 2)` and returns `5`.
+
+---
+
+### `mul`
+
+```python
+def mul(z: int) -> int:
+    """Return x * y from an encoded pair."""
+    x, y = unpi(z)
+    return x * y
+```
+
+`mul` decodes its argument as a Cantor pair `<x, y>` and returns `x * y`.
+
+| Property | Value |
+|----------|-------|
+| **Input** | Cantor-encoded pair `π(x, y)` |
+| **Output** | `x * y` |
+| **Pair input required** | **Yes** |
+
+**Example:**
+
+```python
+from cantor_stdlib import mul, pi
+
+# pi(3, 4) == 32
+assert mul(pi(3, 4)) == 12  # 3 * 4
+```
+
+---
+
+### `diff`
+
+```python
+def diff(z: int) -> int:
+    """Return max(0, x - y) from an encoded pair."""
+    x, y = unpi(z)
+    return max(0, x - y)
+```
+
+`diff` decodes its argument as a Cantor pair `<x, y>` and returns **truncated subtraction**: `max(0, x − y)`. The result is clamped to zero when `y > x`, preserving the invariant that all values stay within the natural numbers.
+
+| Property | Value |
+|----------|-------|
+| **Input** | Cantor-encoded pair `π(x, y)` |
+| **Output** | `max(0, x − y)` |
+| **Pair input required** | **Yes** |
+
+**Example:**
+
+```python
+from cantor_stdlib import diff, pi
+
+# pi(5, 3) == 39
+assert diff(pi(5, 3)) == 2   # 5 - 3
+
+# pi(2, 5) == 33
+assert diff(pi(2, 5)) == 0   # max(0, 2 - 5) → clamped to 0
+```
+
+<Note>
+Unlike regular integer subtraction, `diff` **never returns a negative number**. Any subtraction that would go below zero yields `0` instead. This is sometimes called *monus* or *proper subtraction* in the theory of natural numbers.
+</Note>
+
+---
+
+### `fst`
+
+```python
+def fst(z: int) -> int:
+    """Return the first element x from an encoded pair."""
+    x, _ = unpi(z)
+    return x
+```
+
+`fst` decodes its argument as a Cantor pair `<x, y>` and returns the **first component** `x`.
+
+| Property | Value |
+|----------|-------|
+| **Input** | Cantor-encoded pair `π(x, y)` |
+| **Output** | `x` (first component) |
+| **Pair input required** | **Yes** |
+
+**Example:**
+
+```python
+from cantor_stdlib import fst, pi
+
+assert fst(pi(10, 20)) == 10
+```
+
+---
+
+### `snd`
+
+```python
+def snd(z: int) -> int:
+    """Return the second element y from an encoded pair."""
+    _, y = unpi(z)
+    return y
+```
+
+`snd` decodes its argument as a Cantor pair `<x, y>` and returns the **second component** `y`.
+
+| Property | Value |
+|----------|-------|
+| **Input** | Cantor-encoded pair `π(x, y)` |
+| **Output** | `y` (second component) |
+| **Pair input required** | **Yes** |
+
+**Example:**
+
+```python
+from cantor_stdlib import snd, pi
+
+assert snd(pi(10, 20)) == 20
+```
+
+<Tip>
+`fst` and `snd` are the inverse of `pair`: `pair fst snd` applied to any encoded pair `<x, y>` returns `π(fst(z), snd(z)) = π(x, y) = z` — the identity on pairs.
+</Tip>
+
+---
+
+## Quick reference
+
+| Name in `.cantor` | Python function | Input | Output | Pair required |
+|-------------------|-----------------|-------|--------|---------------|
+| `k_1` | `k_1(x)` | any `x` | `1` | No |
+| `id` | `identity(z)` | any `z` | `z` | No |
+| `add` | `add(z)` | `π(x, y)` | `x + y` | **Yes** |
+| `mul` | `mul(z)` | `π(x, y)` | `x * y` | **Yes** |
+| `diff` | `diff(z)` | `π(x, y)` | `max(0, x − y)` | **Yes** |
+| `fst` | `fst(z)` | `π(x, y)` | `x` | **Yes** |
+| `snd` | `snd(z)` | `π(x, y)` | `y` | **Yes** |
+
+---
+
+## Using built-ins in function definitions
+
+Built-in names can appear directly in `define` bodies alongside the combinators `pair`, `comp`, `compair`, `mu`, and `primrec`:
+
+```text
+# Compute x + y, then add 1
+define plus_one
+  comp add pair id k_1
+
+main plus_one
+```
+
+The body `comp add (pair id k_1)` first evaluates `pair id k_1` on the input `n`, producing `π(id(n), k_1(n)) = π(n, 1)`, then passes that encoded pair to `add`, which returns `n + 1`. More involved combinations let you compose any n-ary computation out of these seven primitives together with the structural combinators.
+
+<CardGroup cols={2}>
+  <Card title="Cantor Pairing" icon="link" href="/stdlib/cantor-pairing">
+    Understand how `π` encodes two naturals into one and how the CLI uses it for multi-value input.
+  </Card>
+  <Card title="Language Reference" icon="book" href="/language/operations">
+    Combinators (`pair`, `comp`, `compair`, `mu`, `primrec`) and how to wire built-ins together.
+  </Card>
+</CardGroup>

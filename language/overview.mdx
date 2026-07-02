@@ -1,0 +1,103 @@
+---
+title: "Cantor Language: Computation over Natural Numbers"
+sidebarTitle: "Overview"
+description: "A conceptual overview of the Cantor language: its mathematical foundations, computational model, and how programs are structured as function compositions."
+---
+
+Cantor is a minimalist interpreted language designed to express computation purely over the natural numbers. Every value in a Cantor program is a natural number (ℕ), every function maps ℕ → ℕ, and all multi-argument computation is encoded through Cantor pairing. The interpreter is written in Python and uses an ANTLR4-generated parser built from a formal grammar.
+
+## Mathematical foundations
+
+All values in Cantor are elements of ℕ (0, 1, 2, …). When a computation requires two inputs — for example, addition of `x` and `y` — both numbers are first encoded into a single natural number using the **Cantor pairing function**:
+
+```
+π(x, y) = ((x + y) × (x + y + 1)) / 2 + y
+```
+
+This encoding is written `<x.y>` throughout this documentation. The pairing is reversible: built-in functions `fst` and `snd` decode the two components. Larger tuples are encoded by nesting pairs from right to left, so a triple `<a, b, c>` is represented as `<a.<b.c>>`.
+
+Because the entire value domain is ℕ and all functions operate on single natural numbers, the language achieves multi-argument computation without any special syntactic support for tuples or lists.
+
+## Program structure
+
+A Cantor program is a plain-text `.cantor` file that follows a strict top-down order:
+
+<Steps>
+  <Step title="main directive">
+    Declares which function to run as the entry point, e.g. `main factorial`.
+  </Step>
+  <Step title="extended directive (optional)">
+    The bare keyword `extended` enables the `compair` and `primrec` combinators. Without it those combinators raise an error at runtime.
+  </Step>
+  <Step title="import directives (zero or more)">
+    Each `import IDENTIFIER` loads `<IDENTIFIER>.cantor` from the same directory and brings all its function definitions into scope.
+  </Step>
+  <Step title="function definitions (zero or more)">
+    Each `define name [doc] body` gives a name to one combinator expression. All named functions are available to any definition that follows — or that was imported before.
+  </Step>
+</Steps>
+
+## The five combinators
+
+Every non-trivial Cantor function is built from exactly one of five combinators. No other control flow exists.
+
+| Combinator | Syntax | Semantics |
+|---|---|---|
+| **comp** | `comp f g` | `f(g(x))` — function composition |
+| **pair** | `pair f g` | `<f(x).g(x)>` — Cantor-encode two results |
+| **compair** | `compair f g h` | `f(<g(x).h(x)>)` — extended shortcut for `comp f (pair g h)` |
+| **mu** | `mu f` | smallest `k ≥ 0` where `f(<x.k>) ≠ 0` — minimization |
+| **primrec** | `primrec f g h` | primitive recursion from 0 to x |
+
+`compair` and `primrec` are only available in extended mode.
+
+## The seven built-in functions
+
+Built-in functions are always in scope; they do not need to be defined or imported.
+
+| Name | Signature | Description |
+|---|---|---|
+| `k_1` | ℕ → ℕ | Always returns `1` |
+| `id` | ℕ → ℕ | Returns its input unchanged |
+| `add` | `<x.y>` → ℕ | Returns `x + y` |
+| `mul` | `<x.y>` → ℕ | Returns `x × y` |
+| `diff` | `<x.y>` → ℕ | Returns `max(0, x − y)` (monus) |
+| `fst` | `<x.y>` → ℕ | Returns `x` |
+| `snd` | `<x.y>` → ℕ | Returns `y` |
+
+## Computational power
+
+Cantor with `comp`, `pair`, and the built-ins covers a rich class of functions. Adding `mu` (unbounded minimization) makes the language Turing-complete: any computable function over ℕ can be expressed. The `primrec` combinator provides a structured alternative to `mu` for functions whose recursion depth is bounded by the input.
+
+<Note>
+Because `mu` has no bound and no timeout, a program that calls `mu` on a predicate that never becomes true will run forever. This is an expected property of any Turing-complete language.
+</Note>
+
+## Language phases
+
+The test suite is organized into phases that reflect the progressive expressive power of the language:
+
+| Phase | Features demonstrated |
+|---|---|
+| **Phase 1 — Core** | `comp`, `pair`, and the seven built-ins; programs like predecessor and addition |
+| **Phase 2 — Imports** | Splitting programs across multiple `.cantor` files with `import` |
+| **Phase 3 — Extended** | `compair` for concise relational functions (`eq`, `lt`, `gt`) |
+| **Phase 4 — Minimization** | `mu` for division and modulo by linear search |
+| **Phase 5 — Conditionals & primrec** | `primrec` and conditional logic for factorial, Fibonacci, etc. |
+
+## Explore the language
+
+<CardGroup cols={2}>
+  <Card title="Syntax" icon="code" href="/language/syntax">
+    Grammar rules, keywords, identifiers, comments, and a fully annotated example program.
+  </Card>
+  <Card title="Operations" icon="function" href="/language/operations">
+    Detailed reference for all five combinators with semantics and worked examples.
+  </Card>
+  <Card title="Imports" icon="package" href="/language/imports">
+    How to split programs across files and how import resolution works.
+  </Card>
+  <Card title="Extended Mode" icon="bolt" href="/language/extended-mode">
+    What the `extended` keyword unlocks and when you need it.
+  </Card>
+</CardGroup>

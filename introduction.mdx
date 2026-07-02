@@ -1,0 +1,85 @@
+---
+title: "Cantor Interpreter: A Minimalist Language over Natural Numbers"
+sidebarTitle: "Introduction"
+description: "Learn what Cantor Interpreter is, how it works, and why you'd use this ANTLR4-based Python interpreter for Cantor's pairing-based programming language."
+---
+
+Cantor Interpreter is a Python implementation of a minimalist, mathematically-grounded programming language built entirely on natural numbers. Every program is a pure function from ℕ to ℕ — there are no strings, no booleans as primitive types, no floating-point values, and no mutable state. The language is designed to make computability theory tangible: you can express addition, predecessor, factorial, Fibonacci, and even minimization (μ-recursion) using a small fixed vocabulary of combinators and built-in functions.
+
+## How it works
+
+A Cantor program defines a single `main` function. When you invoke the interpreter, you supply one or more natural numbers on standard input. If you provide two or more numbers, the interpreter automatically encodes them into a single natural number using the **Cantor pairing function**:
+
+```text
+<x, y> = (x + y + 1)(x + y) / 2 + x
+```
+
+This bijection from ℕ × ℕ → ℕ means the language never needs tuples or lists as separate concepts — any finite sequence of naturals can be folded into a single number, and the built-in `fst`/`snd` functions can unpack it again. The final result is printed to standard output as a single natural number.
+
+## The five combinators
+
+Cantor programs are built by composing five combinators. Every combinator takes functions as arguments and produces a new function.
+
+| Combinator | Signature | Description |
+|---|---|---|
+| `comp f g` | `ℕ → ℕ` | Function composition: returns `f(g(x))`. |
+| `pair f g` | `ℕ → ℕ` | Returns the Cantor pair `<f(x), g(x)>`. |
+| `compair f g h` | `ℕ → ℕ` | Extended mode only. Shorthand for `comp f (pair g h)`: returns `f(<g(x), h(x)>)`. |
+| `mu f` | `ℕ → ℕ` | Minimization. Returns the smallest `k ≥ 0` such that `f(<x, k>)` is non-zero. |
+| `primrec f g h` | `ℕ → ℕ` | Extended mode only. Primitive recursion from `0` up to `x`. |
+
+## The seven built-in functions
+
+The standard library provides seven primitive functions that serve as the atoms from which all other programs are composed.
+
+| Function | Input | Output |
+|---|---|---|
+| `k_1` | any `x` | Always `1` |
+| `id` | `x` | `x` (identity) |
+| `add` | `<x, y>` | `x + y` |
+| `mul` | `<x, y>` | `x × y` |
+| `diff` | `<x, y>` | `max(0, x − y)` (monus / truncated subtraction) |
+| `fst` | `<x, y>` | `x` (first projection) |
+| `snd` | `<x, y>` | `y` (second projection) |
+
+All arithmetic is saturating at zero: there are no negative numbers in the language.
+
+## ANTLR4 grammar-based parsing
+
+The interpreter does not use a hand-written parser. Instead, the language grammar is defined in `src/cantor.g4` and compiled by [ANTLR4](https://www.antlr.org/) into a Python lexer, parser, and visitor (`cantorLexer.py`, `cantorParser.py`, `cantorVisitor.py`). The `CantorInterpreter` class in `src/cantor_interpreter.py` walks the resulting parse tree and evaluates each node. This separation of grammar and semantics makes the language easy to extend.
+
+## Who is this for?
+
+Cantor Interpreter is aimed at:
+
+- **Students** taking courses in computability theory, formal languages, or programming language design who want to experiment with μ-recursive functions in a runnable environment.
+- **Educators** looking for a clean, dependency-light tool to demonstrate Cantor pairing, primitive recursion, and the equivalence of different models of computation.
+- **Researchers** who need a reference implementation of a minimalist recursive function language for prototyping or teaching purposes.
+
+## Limitations
+
+<Warning>
+Keep these constraints in mind before writing programs.
+
+- **No interactive REPL.** Every program runs non-interactively: you pipe input in and read the result from stdout.
+- **Natural numbers only.** Inputs must be non-negative integers separated by whitespace. Negative numbers are not supported.
+- **`mu` may not terminate.** The minimization combinator searches `k = 0, 1, 2, ...` indefinitely. If the predicate is never satisfied, the interpreter loops forever — there is no built-in timeout.
+- **Imports are directory-relative.** Imported modules are resolved from the directory of the executing `.cantor` file, not from a global package registry.
+</Warning>
+
+## Explore the docs
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Python dependencies, set up the Java runtime, and generate the ANTLR4 parser files with `make`.
+  </Card>
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Run your first Cantor program in under five minutes and learn how input encoding works.
+  </Card>
+  <Card title="Language Overview" icon="book" href="/language/overview">
+    Dive into program structure, the `define` block, `import` directives, and `extended` mode.
+  </Card>
+  <Card title="Built-in Functions" icon="function" href="/stdlib/builtin-functions">
+    Reference documentation for all seven standard library functions with worked examples.
+  </Card>
+</CardGroup>
